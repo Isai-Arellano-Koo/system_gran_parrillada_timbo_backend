@@ -11,18 +11,21 @@ const run = async () => {
     const users = [
       {
         name: "Administrador",
+        username: "admin",
         email: "admin@timbo.com",
         password: "admin123",
         role: "admin" as const,
       },
       {
         name: "Mesero Demo",
+        username: "mesero",
         email: "mesero@timbo.com",
         password: "mesero123",
         role: "mesero" as const,
       },
       {
         name: "Cocinero Demo",
+        username: "cocinero",
         email: "cocinero@timbo.com",
         password: "cocinero123",
         role: "cocinero" as const,
@@ -34,12 +37,17 @@ const run = async () => {
       if (!existing) {
         await User.create({
           name: item.name,
+          username: item.username,
           email: item.email,
           password_hash: await hashPassword(item.password),
           role: item.role,
         });
         console.log(`Usuario creado: ${item.email} / ${item.password}`);
       } else {
+        if (!existing.username) {
+          existing.username = item.username;
+          await existing.save();
+        }
         console.log(`Usuario ya existe: ${item.email}`);
       }
     }

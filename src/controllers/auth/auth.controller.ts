@@ -1,9 +1,9 @@
 import { User } from "../../models";
-import { comparePassword, hashPassword } from "../../helpers/password";
+import { comparePassword } from "../../helpers/password";
 import { buildAuthResponse } from "../../helpers/authTokens";
 import { AppError } from "../../middlewares/errorHandler";
 import type { UserRole } from "../../types/enums";
-import { USER_ROLES } from "../../types/enums";
+import { createUserController } from "../users/user.controller";
 
 type LoginInput = {
   email: string;
@@ -12,9 +12,11 @@ type LoginInput = {
 
 type RegisterInput = {
   name: string;
+  username?: string;
   email: string;
   password: string;
   role: UserRole;
+  is_active?: boolean;
 };
 
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
@@ -40,40 +42,13 @@ export const loginController = async (data: LoginInput) => {
 };
 
 export const registerController = async (data: RegisterInput) => {
-  const email = normalizeEmail(data.email || "");
-  const name = data.name?.trim();
-
-  if (!name) {
-    throw new AppError("El nombre es obligatorio");
-  }
-  if (!email) {
-    throw new AppError("El email es obligatorio");
-  }
-  if (!data.password || data.password.length < 6) {
-    throw new AppError("La contraseña debe tener al menos 6 caracteres");
-  }
-  if (!USER_ROLES.includes(data.role)) {
-    throw new AppError("Rol inválido");
-  }
-
-  const existing = await User.findOne({ where: { email } });
-  if (existing) {
-    throw new AppError("Ya existe una cuenta con ese email");
-  }
-
-  const user = await User.create({
-    name,
-    email,
-    password_hash: await hashPassword(data.password),
-    role: data.role,
-  });
-
+  const user = await createUserController(data);
   return buildAuthResponse(user);
 };
 
 export const getMeController = async (userId: number) => {
   const user = await User.findByPk(userId, {
-    attributes: ["id", "name", "email", "role", "is_active"],
+    attributes: ["id", "name", "username", "email", "role", "is_active"],
   });
 
   if (!user || !user.is_active) {

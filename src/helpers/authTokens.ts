@@ -17,6 +17,8 @@ export const buildAuthResponse = (user: {
   email: string;
   name: string;
   role: JwtPayload["role"];
+  username?: string | null;
+  is_active?: boolean;
 }) => {
   const payload: JwtPayload = {
     id: user.id,
@@ -31,7 +33,9 @@ export const buildAuthResponse = (user: {
       id: user.id,
       email: user.email,
       name: user.name,
+      username: user.username ?? null,
       role: user.role,
+      is_active: user.is_active ?? true,
     },
   };
 };
