@@ -51,6 +51,53 @@ export const registerStockEntryController = async (
   });
 };
 
+export const adjustStockController = async (
+  data: { ingredient_id?: number; stock_current?: number; reason?: string },
+  userId: number
+) => {
+  const ingredientId = Number(data.ingredient_id);
+  const next = Number(data.stock_current);
+
+  if (!ingredientId) throw new AppError("Debe seleccionar un ingrediente");
+  if (!Number.isFinite(next) || next < 0) {
+    throw new AppError("El stock no puede ser negativo");
+  }
+
+  return sequelize.transaction(async (t) => {
+    const ingredient = await Ingredient.findByPk(ingredientId, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    if (!ingredient) throw new AppError("Ingrediente no encontrado", 404);
+
+    const current = Number(ingredient.stock_current);
+    const delta = Number((next - current).toFixed(3));
+
+    if (Math.abs(delta) < 0.0005) {
+      return { ingredient, movement: null };
+    }
+
+    ingredient.stock_current = next;
+    await ingredient.save({ transaction: t });
+
+    const movement = await InventoryMovement.create(
+      {
+        ingredient_id: ingredientId,
+        type: "ajuste",
+        quantity: Math.abs(delta),
+        reason:
+          data.reason?.trim() ||
+          `Ajuste de stock: ${current} → ${next} ${ingredient.unit}`,
+        user_id: userId,
+        order_id: null,
+      },
+      { transaction: t }
+    );
+
+    return { ingredient, movement };
+  });
+};
+
 export const listMovementsController = async () => {
   return InventoryMovement.findAll({
     include: [

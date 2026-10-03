@@ -51,6 +51,11 @@ export const updateDishHandler = (req: Request, res: Response) =>
   handle(res, () => updateDishController(Number(req.params.id), req.body));
 
 export const setRecipeHandler = (req: Request, res: Response) =>
-  handle(res, () =>
-    setRecipeController(Number(req.params.dishId), req.body.items || req.body)
-  );
+  handle(res, () => {
+    const items = Array.isArray(req.body?.items)
+      ? req.body.items
+      : Array.isArray(req.body)
+        ? req.body
+        : [];
+    return setRecipeController(Number(req.params.dishId), items);
+  });

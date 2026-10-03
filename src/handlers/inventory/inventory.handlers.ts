@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import {
   registerStockEntryController,
+  adjustStockController,
   listMovementsController,
   listLowStockAlertsController,
 } from "../../controllers/inventory/inventory.controller";
@@ -32,6 +33,9 @@ export const registerStockEntryHandler = (req: Request, res: Response) =>
     () => registerStockEntryController(req.body, req.user!.id),
     201
   );
+
+export const adjustStockHandler = (req: Request, res: Response) =>
+  handle(res, () => adjustStockController(req.body, req.user!.id));
 
 export const listMovementsHandler = (_req: Request, res: Response) =>
   handle(res, () => listMovementsController());

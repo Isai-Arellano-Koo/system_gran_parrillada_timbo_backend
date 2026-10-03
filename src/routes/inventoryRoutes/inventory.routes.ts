@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   registerStockEntryHandler,
+  adjustStockHandler,
   listMovementsHandler,
   listLowStockAlertsHandler,
 } from "../../handlers/inventory/inventory.handlers";
@@ -13,6 +14,7 @@ router.use(authMiddleware);
 router.use(requireRoles("admin"));
 
 router.post("/entries", registerStockEntryHandler);
+router.post("/adjustments", adjustStockHandler);
 router.get("/movements", listMovementsHandler);
 router.get("/alerts", listLowStockAlertsHandler);
 

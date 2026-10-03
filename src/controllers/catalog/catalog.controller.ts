@@ -167,8 +167,14 @@ export const setRecipeController = async (
   const dish = await Dish.findByPk(dishId);
   if (!dish) throw new AppError("Plato no encontrado", 404);
 
-  if (!Array.isArray(items) || items.length === 0) {
-    throw new AppError("La receta debe contener al menos un ingrediente");
+  if (!Array.isArray(items)) {
+    throw new AppError("La receta no es válida");
+  }
+
+  if (items.length === 0) {
+    await RecipeItem.destroy({ where: { dish_id: dishId } });
+    const dishes = await listDishesController();
+    return dishes.find((d) => d.id === dishId);
   }
 
   const seen = new Set<number>();
