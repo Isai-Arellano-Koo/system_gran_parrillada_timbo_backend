@@ -6,7 +6,7 @@ import {
   CreationOptional,
 } from "sequelize";
 import { sequelize } from "../config/database";
-import type { UserRole } from "../types/enums";
+import { USER_ROLES, type UserRole } from "../types/enums";
 
 export class User extends Model<
   InferAttributes<User>,
@@ -49,7 +49,7 @@ User.init(
       allowNull: false,
     },
     role: {
-      type: DataTypes.ENUM("admin", "mesero", "cocinero"),
+      type: DataTypes.ENUM(...USER_ROLES),
       allowNull: false,
     },
     is_active: {

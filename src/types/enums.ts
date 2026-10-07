@@ -1,4 +1,4 @@
-export const USER_ROLES = ["admin", "mesero", "cocinero"] as const;
+export const USER_ROLES = ["admin", "mesero", "cocinero", "cajero"] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
 export const MEASUREMENT_UNITS = ["kg", "g", "lt", "ml", "unidad"] as const;

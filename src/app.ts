@@ -7,7 +7,9 @@ import { env } from "./config/env";
 
 const app = express();
 
-app.use(morgan("dev"));
+if (env.nodeEnv !== "test") {
+  app.use(morgan("dev"));
+}
 app.use(
   cors({
     origin: env.corsOrigin === "*" ? true : env.corsOrigin,

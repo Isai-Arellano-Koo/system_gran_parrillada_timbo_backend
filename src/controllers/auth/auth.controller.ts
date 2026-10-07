@@ -6,8 +6,9 @@ import type { UserRole } from "../../types/enums";
 import { createUserController } from "../users/user.controller";
 
 type LoginInput = {
-  email: string;
-  password: string;
+  email?: string;
+  username?: string;
+  password?: string;
 };
 
 type RegisterInput = {
@@ -22,13 +23,17 @@ type RegisterInput = {
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
 
 export const loginController = async (data: LoginInput) => {
+  const username = (data.username || "").trim().toLowerCase();
   const email = normalizeEmail(data.email || "");
+  const identifier = username || email;
 
-  if (!email || !data.password) {
-    throw new AppError("Email y contraseña son obligatorios");
+  if (!identifier || !data.password) {
+    throw new AppError("El usuario o correo y la contraseña son obligatorios");
   }
 
-  const user = await User.findOne({ where: { email } });
+  const user = identifier.includes("@")
+    ? await User.findOne({ where: { email: identifier } })
+    : await User.findOne({ where: { username: identifier } });
   if (!user || !user.is_active) {
     throw new AppError("Credenciales inválidas", 401);
   }
