@@ -3,7 +3,6 @@ import {
   createUserHandler,
   getUserHandler,
   listUsersHandler,
-  requestEmailCodeHandler,
   updateUserHandler,
 } from "../../handlers/users/user.handlers";
 import { authMiddleware } from "../../middlewares/authMiddleware";
@@ -13,7 +12,6 @@ const router = Router();
 
 router.use(authMiddleware, requireRoles("admin"));
 router.get("/", listUsersHandler);
-router.post("/email-code", requestEmailCodeHandler);
 router.post("/", createUserHandler);
 router.get("/:id", getUserHandler);
 router.patch("/:id", updateUserHandler);

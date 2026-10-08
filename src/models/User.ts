@@ -19,6 +19,7 @@ export class User extends Model<
   declare password_hash: string;
   declare role: UserRole;
   declare is_active: CreationOptional<boolean>;
+  declare email_verified: CreationOptional<boolean>;
   declare created_at: CreationOptional<Date>;
   declare updated_at: CreationOptional<Date>;
 }
@@ -53,6 +54,11 @@ User.init(
       allowNull: false,
     },
     is_active: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: true,
+    },
+    email_verified: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: true,

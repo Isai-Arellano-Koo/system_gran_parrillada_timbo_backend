@@ -149,6 +149,8 @@ let meseroToken = "";
 let adminId = 0;
 let meseroId = 0;
 let ingredientId = 0;
+let pendingCode = "";
+let pendingToken = "";
 
 describe("API Gran Parrillada Timbó", () => {
   beforeAll(async () => {
@@ -223,11 +225,6 @@ describe("API Gran Parrillada Timbó", () => {
     });
 
     it("CP07 Admin registra un mesero válido", async () => {
-      const codeResult = await request("POST", "/api/users/email-code", {
-        token: adminToken,
-        body: { email: "luis.test@timbo.com" },
-      });
-      check(codeResult.status === 200, `Estado ${codeResult.status}: ${messageOf(codeResult)}`);
       const result = await request("POST", "/api/users", {
         token: adminToken,
         body: {
@@ -237,11 +234,12 @@ describe("API Gran Parrillada Timbó", () => {
           password: "clave1234",
           role: "mesero",
           is_active: true,
-          verification_code: String(codeResult.data.devCode || ""),
         },
       });
       check(result.status === 201, `Estado ${result.status}: ${messageOf(result)}`);
       check(result.data.role === "mesero", "El rol creado no es mesero");
+      check(result.data.is_active === false, "La cuenta nueva no quedó deshabilitada");
+      check(result.data.email_verified === false, "El correo quedó confirmado al crearla");
     });
 
     it("CP08 Username ya existente", async () => {
@@ -275,11 +273,6 @@ describe("API Gran Parrillada Timbó", () => {
     });
 
     it("CP10 Registrar rol cajero", async () => {
-      const codeResult = await request("POST", "/api/users/email-code", {
-        token: adminToken,
-        body: { email: "cajero.test@timbo.com" },
-      });
-      check(codeResult.status === 200, `Estado ${codeResult.status}: ${messageOf(codeResult)}`);
       const result = await request("POST", "/api/users", {
         token: adminToken,
         body: {
@@ -288,11 +281,54 @@ describe("API Gran Parrillada Timbó", () => {
           email: "cajero.test@timbo.com",
           password: "clave1234",
           role: "cajero",
-          verification_code: String(codeResult.data.devCode || ""),
         },
       });
       check(result.status === 201, `Estado ${result.status}: ${messageOf(result)}`);
       check(result.data.role === "cajero", "El rol creado no es cajero");
+      check(result.data.is_active === false, "La cuenta nueva no quedó deshabilitada");
+    });
+
+    it("CP30 Primer ingreso pide confirmar el correo", async () => {
+      const result = await request("POST", "/api/auth/login", {
+        body: { username: "cajero.test", password: "clave1234" },
+      });
+      check(result.status === 200, `Estado ${result.status}: ${messageOf(result)}`);
+      check(result.data.needsEmailConfirmation === true, "No pidió confirmar el correo");
+      check(!result.data.accessToken, "Entregó acceso antes de confirmar");
+      check(Boolean(result.data.devCode), "No devolvió el código de prueba");
+      check(Boolean(result.data.confirmationToken), "No devolvió el token de confirmación");
+      pendingCode = String(result.data.devCode);
+      pendingToken = String(result.data.confirmationToken);
+    });
+
+    it("CP31 Código incorrecto no activa la cuenta", async () => {
+      const result = await request("POST", "/api/auth/confirm-email", {
+        body: {
+          confirmationToken: pendingToken,
+          code: "000000",
+        },
+      });
+      check(result.status === 400, `Estado ${result.status}: ${messageOf(result)}`);
+    });
+
+    it("CP32 Confirmar el correo activa la cuenta", async () => {
+      const result = await request("POST", "/api/auth/confirm-email", {
+        body: {
+          confirmationToken: pendingToken,
+          code: pendingCode,
+        },
+      });
+      check(result.status === 200, `Estado ${result.status}: ${messageOf(result)}`);
+      check(Boolean(result.data.accessToken), "No entregó accessToken");
+      check(result.data.user?.role === "cajero", "El rol después de confirmar no es cajero");
+      check(result.data.user?.is_active !== false, "La cuenta sigue deshabilitada");
+
+      const again = await request("POST", "/api/auth/login", {
+        body: { username: "cajero.test", password: "clave1234" },
+      });
+      check(again.status === 200, `Estado ${again.status}: ${messageOf(again)}`);
+      check(Boolean(again.data.accessToken), "El segundo ingreso no entregó acceso");
+      check(again.data.needsEmailConfirmation !== true, "Volvió a pedir confirmación");
     });
 
     it("CP11 Contraseña corta", async () => {

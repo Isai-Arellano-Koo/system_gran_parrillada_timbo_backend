@@ -55,4 +55,8 @@ export const connectDatabase = async () => {
     await sequelize.sync();
     console.log("Modelos sincronizados con la base de datos.");
   }
+
+  await sequelize.query(
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT true`
+  );
 };

@@ -1,8 +1,10 @@
 import { Request, Response } from "express";
 import {
+  confirmEmailController,
+  getMeController,
   loginController,
   registerController,
-  getMeController,
+  resendConfirmEmailController,
 } from "../../controllers/auth/auth.controller";
 import { AppError } from "../../middlewares/errorHandler";
 
@@ -24,6 +26,27 @@ const mapAuthError = (error: unknown, res: Response) => {
 export const loginHandler = async (req: Request, res: Response) => {
   try {
     const result = await loginController(req.body);
+    return res.status(200).json(result);
+  } catch (error) {
+    return mapAuthError(error, res);
+  }
+};
+
+export const confirmEmailHandler = async (req: Request, res: Response) => {
+  try {
+    const result = await confirmEmailController(
+      req.body?.confirmationToken,
+      req.body?.code
+    );
+    return res.status(200).json(result);
+  } catch (error) {
+    return mapAuthError(error, res);
+  }
+};
+
+export const resendConfirmEmailHandler = async (req: Request, res: Response) => {
+  try {
+    const result = await resendConfirmEmailController(req.body?.confirmationToken);
     return res.status(200).json(result);
   } catch (error) {
     return mapAuthError(error, res);

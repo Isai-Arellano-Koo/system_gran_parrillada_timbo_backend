@@ -9,7 +9,30 @@ export const signAccessToken = (payload: JwtPayload) => {
 };
 
 export const verifyAccessToken = (token: string): JwtPayload => {
-  return jwt.verify(token, env.jwt.secret) as JwtPayload;
+  const payload = jwt.verify(token, env.jwt.secret) as JwtPayload & {
+    purpose?: string;
+  };
+  if (payload.purpose || !payload.id || !payload.role) {
+    throw new Error("Token inválido");
+  }
+  return payload;
+};
+
+export const signConfirmToken = (userId: number) => {
+  return jwt.sign({ purpose: "confirm-email", id: userId }, env.jwt.secret, {
+    expiresIn: "15m",
+  });
+};
+
+export const verifyConfirmToken = (token: string) => {
+  const payload = jwt.verify(token, env.jwt.secret) as {
+    purpose?: string;
+    id?: number;
+  };
+  if (payload.purpose !== "confirm-email" || !payload.id) {
+    throw new Error("Token inválido");
+  }
+  return { id: payload.id };
 };
 
 export const buildAuthResponse = (user: {

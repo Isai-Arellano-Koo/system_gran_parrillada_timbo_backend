@@ -5,7 +5,7 @@ const SUBJECT = "Código para confirmar tu correo — Gran Parrillada Timbó";
 
 const messageText = (code: string) =>
   [
-    "Usa este código para confirmar que el correo existe y terminar el registro:",
+    "Usa este código para confirmar tu correo y activar tu cuenta:",
     "",
     code,
     "",
@@ -13,7 +13,7 @@ const messageText = (code: string) =>
   ].join("\n");
 
 const messageHtml = (code: string) => `
-  <p>Usa este código para confirmar que el correo existe y terminar el registro en <strong>Gran Parrillada Timbó</strong>:</p>
+  <p>Usa este código para confirmar tu correo y activar tu cuenta en <strong>Gran Parrillada Timbó</strong>:</p>
   <p style="font-size:28px;letter-spacing:0.3em;font-weight:700">${code}</p>
   <p>Caduca en 15 minutos. Si no pediste este código, ignora el mensaje.</p>
 `;

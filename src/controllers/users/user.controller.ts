@@ -19,6 +19,7 @@ const PUBLIC_ATTRIBUTES = [
   "email",
   "role",
   "is_active",
+  "email_verified",
   "created_at",
 ] as const;
 
@@ -29,6 +30,7 @@ export type PublicUser = {
   email: string;
   role: UserRole;
   is_active: boolean;
+  email_verified: boolean;
   created_at?: Date;
 };
 
@@ -38,8 +40,6 @@ type CreateUserInput = {
   email?: string;
   password?: string;
   role?: UserRole;
-  is_active?: boolean;
-  verification_code?: string;
 };
 
 type UpdateUserInput = {
@@ -49,7 +49,6 @@ type UpdateUserInput = {
   password?: string;
   role?: UserRole;
   is_active?: boolean;
-  verification_code?: string;
 };
 
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
@@ -62,6 +61,7 @@ const toPublic = (user: User): PublicUser => ({
   email: user.email,
   role: user.role,
   is_active: user.is_active,
+  email_verified: user.email_verified,
   created_at: user.created_at,
 });
 
@@ -112,15 +112,10 @@ const consumeEmailCode = async (email: string, code: string | undefined) => {
   await row.save();
 };
 
-export const requestEmailCodeController = async (emailRaw?: string) => {
-  const email = normalizeEmail(emailRaw || "");
+export const issueEmailCode = async (emailRaw: string) => {
+  const email = normalizeEmail(emailRaw);
   if (!email.includes("@") || !email.split("@")[1]?.includes(".")) {
     throw new AppError("El correo electrónico no es válido");
-  }
-
-  const taken = await User.findOne({ where: { email } });
-  if (taken) {
-    throw new AppError("Ya existe una cuenta con ese correo");
   }
 
   const latest = await EmailVerification.findOne({
@@ -154,6 +149,28 @@ export const requestEmailCodeController = async (emailRaw?: string) => {
   };
 };
 
+export const confirmAccountController = async (userId: number, code: string) => {
+  const user = await User.findByPk(userId);
+  if (!user) {
+    throw new AppError("Usuario no encontrado", 404);
+  }
+  if (user.email_verified) {
+    if (!user.is_active) {
+      throw new AppError(
+        "Tu cuenta está suspendida. Pide a un administrador que la reactive.",
+        403
+      );
+    }
+    return user;
+  }
+
+  await consumeEmailCode(user.email, code);
+  user.email_verified = true;
+  user.is_active = true;
+  await user.save();
+  return user;
+};
+
 export const listUsersController = async () => {
   return User.findAll({
     attributes: [...PUBLIC_ATTRIBUTES],
@@ -177,7 +194,6 @@ export const createUserController = async (data: CreateUserInput) => {
   const username = normalizeUsername(data.username || "");
   const password = data.password || "";
   const role = assertRole(data.role);
-  const isActive = data.is_active !== false;
 
   if (!name) {
     throw new AppError("El nombre es obligatorio");
@@ -200,15 +216,14 @@ export const createUserController = async (data: CreateUserInput) => {
     throw new AppError("Ese nombre de usuario ya está en uso");
   }
 
-  await consumeEmailCode(email, data.verification_code);
-
   const user = await User.create({
     name,
     username,
     email,
     password_hash: await hashPassword(password),
     role,
-    is_active: isActive,
+    is_active: false,
+    email_verified: false,
   });
 
   return toPublic(user);
@@ -227,6 +242,12 @@ export const updateUserController = async (
   const nextRole = data.role === undefined ? user.role : assertRole(data.role);
   const nextActive =
     data.is_active === undefined ? user.is_active : Boolean(data.is_active);
+
+  if (nextActive && !user.email_verified) {
+    throw new AppError(
+      "La cuenta se activa cuando la persona confirma su correo en el primer ingreso"
+    );
+  }
 
   if (user.id === actorId && nextRole !== user.role) {
     throw new AppError("No puedes cambiar tu propio rol");
@@ -269,9 +290,6 @@ export const updateUserController = async (
     });
     if (taken) {
       throw new AppError("Ya existe una cuenta con ese correo");
-    }
-    if (email !== user.email) {
-      await consumeEmailCode(email, data.verification_code);
     }
     user.email = email;
   }

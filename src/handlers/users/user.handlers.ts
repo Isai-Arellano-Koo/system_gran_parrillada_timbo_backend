@@ -3,7 +3,6 @@ import {
   createUserController,
   getUserController,
   listUsersController,
-  requestEmailCodeController,
   updateUserController,
 } from "../../controllers/users/user.controller";
 import { AppError } from "../../middlewares/errorHandler";
@@ -40,15 +39,6 @@ export const getUserHandler = async (req: Request, res: Response) => {
     }
     const user = await getUserController(id);
     return res.status(200).json(user);
-  } catch (error) {
-    return mapUserError(error, res);
-  }
-};
-
-export const requestEmailCodeHandler = async (req: Request, res: Response) => {
-  try {
-    const result = await requestEmailCodeController(req.body?.email);
-    return res.status(200).json(result);
   } catch (error) {
     return mapUserError(error, res);
   }
