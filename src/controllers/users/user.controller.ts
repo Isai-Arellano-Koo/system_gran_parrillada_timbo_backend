@@ -1,8 +1,14 @@
+import { createHash, randomInt, timingSafeEqual } from "crypto";
 import { Op } from "sequelize";
-import { User } from "../../models";
+import { EmailVerification, User } from "../../models";
 import { hashPassword } from "../../helpers/password";
+import { sendVerificationEmail } from "../../helpers/mail";
+import { env } from "../../config/env";
 import { AppError } from "../../middlewares/errorHandler";
 import { USER_ROLES, type UserRole } from "../../types/enums";
+
+const CODE_TTL_MS = 15 * 60 * 1000;
+const RESEND_MS = 60 * 1000;
 
 const USERNAME_RE = /^[a-z0-9.]+$/;
 
@@ -33,6 +39,7 @@ type CreateUserInput = {
   password?: string;
   role?: UserRole;
   is_active?: boolean;
+  verification_code?: string;
 };
 
 type UpdateUserInput = {
@@ -42,6 +49,7 @@ type UpdateUserInput = {
   password?: string;
   role?: UserRole;
   is_active?: boolean;
+  verification_code?: string;
 };
 
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
@@ -70,6 +78,80 @@ const assertRole = (role: UserRole | undefined): UserRole => {
     throw new AppError("Rol inválido");
   }
   return role;
+};
+
+const hashCode = (code: string) =>
+  createHash("sha256").update(code).digest("hex");
+
+const sameHash = (left: string, right: string) => {
+  const a = Buffer.from(left);
+  const b = Buffer.from(right);
+  return a.length === b.length && timingSafeEqual(a, b);
+};
+
+const consumeEmailCode = async (email: string, code: string | undefined) => {
+  const clean = (code || "").trim();
+  if (!/^\d{6}$/.test(clean)) {
+    throw new AppError("Ingresa el código de 6 dígitos que enviamos al correo");
+  }
+
+  const row = await EmailVerification.findOne({
+    where: {
+      email,
+      used_at: null,
+      expires_at: { [Op.gt]: new Date() },
+    },
+    order: [["created_at", "DESC"]],
+  });
+
+  if (!row || !sameHash(row.code_hash, hashCode(clean))) {
+    throw new AppError("El código es incorrecto o ya caducó");
+  }
+
+  row.used_at = new Date();
+  await row.save();
+};
+
+export const requestEmailCodeController = async (emailRaw?: string) => {
+  const email = normalizeEmail(emailRaw || "");
+  if (!email.includes("@") || !email.split("@")[1]?.includes(".")) {
+    throw new AppError("El correo electrónico no es válido");
+  }
+
+  const taken = await User.findOne({ where: { email } });
+  if (taken) {
+    throw new AppError("Ya existe una cuenta con ese correo");
+  }
+
+  const latest = await EmailVerification.findOne({
+    where: { email },
+    order: [["created_at", "DESC"]],
+  });
+  if (
+    latest?.created_at &&
+    Date.now() - new Date(latest.created_at).getTime() < RESEND_MS
+  ) {
+    throw new AppError("Espera un minuto antes de pedir otro código");
+  }
+
+  const code = String(randomInt(100000, 1000000));
+  const row = await EmailVerification.create({
+    email,
+    code_hash: hashCode(code),
+    expires_at: new Date(Date.now() + CODE_TTL_MS),
+  });
+
+  try {
+    await sendVerificationEmail(email, code);
+  } catch (error) {
+    await row.destroy();
+    throw error;
+  }
+
+  return {
+    message: "Enviamos un código a ese correo. Caduca en 15 minutos.",
+    ...(env.nodeEnv === "test" ? { devCode: code } : {}),
+  };
 };
 
 export const listUsersController = async () => {
@@ -117,6 +199,8 @@ export const createUserController = async (data: CreateUserInput) => {
   if (usernameTaken) {
     throw new AppError("Ese nombre de usuario ya está en uso");
   }
+
+  await consumeEmailCode(email, data.verification_code);
 
   const user = await User.create({
     name,
@@ -185,6 +269,9 @@ export const updateUserController = async (
     });
     if (taken) {
       throw new AppError("Ya existe una cuenta con ese correo");
+    }
+    if (email !== user.email) {
+      await consumeEmailCode(email, data.verification_code);
     }
     user.email = email;
   }

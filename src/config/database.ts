@@ -51,7 +51,8 @@ export const connectDatabase = async () => {
   await ensureUserRoleValues();
 
   if (env.db.sync) {
-    await sequelize.sync({ alter: true });
+    // Creates missing tables. alter:true on every boot duplicated unique indexes.
+    await sequelize.sync();
     console.log("Modelos sincronizados con la base de datos.");
   }
 };

@@ -223,6 +223,11 @@ describe("API Gran Parrillada Timbó", () => {
     });
 
     it("CP07 Admin registra un mesero válido", async () => {
+      const codeResult = await request("POST", "/api/users/email-code", {
+        token: adminToken,
+        body: { email: "luis.test@timbo.com" },
+      });
+      check(codeResult.status === 200, `Estado ${codeResult.status}: ${messageOf(codeResult)}`);
       const result = await request("POST", "/api/users", {
         token: adminToken,
         body: {
@@ -232,6 +237,7 @@ describe("API Gran Parrillada Timbó", () => {
           password: "clave1234",
           role: "mesero",
           is_active: true,
+          verification_code: String(codeResult.data.devCode || ""),
         },
       });
       check(result.status === 201, `Estado ${result.status}: ${messageOf(result)}`);
@@ -269,6 +275,11 @@ describe("API Gran Parrillada Timbó", () => {
     });
 
     it("CP10 Registrar rol cajero", async () => {
+      const codeResult = await request("POST", "/api/users/email-code", {
+        token: adminToken,
+        body: { email: "cajero.test@timbo.com" },
+      });
+      check(codeResult.status === 200, `Estado ${codeResult.status}: ${messageOf(codeResult)}`);
       const result = await request("POST", "/api/users", {
         token: adminToken,
         body: {
@@ -277,6 +288,7 @@ describe("API Gran Parrillada Timbó", () => {
           email: "cajero.test@timbo.com",
           password: "clave1234",
           role: "cajero",
+          verification_code: String(codeResult.data.devCode || ""),
         },
       });
       check(result.status === 201, `Estado ${result.status}: ${messageOf(result)}`);

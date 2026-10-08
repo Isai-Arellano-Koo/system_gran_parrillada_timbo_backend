@@ -7,6 +7,7 @@ import { Order } from "./Order";
 import { OrderDetail } from "./OrderDetail";
 import { KitchenTicket } from "./KitchenTicket";
 import { InventoryMovement } from "./InventoryMovement";
+import { EmailVerification } from "./EmailVerification";
 
 Dish.hasMany(RecipeItem, {
   foreignKey: "dish_id",
@@ -87,4 +88,5 @@ export {
   OrderDetail,
   KitchenTicket,
   InventoryMovement,
+  EmailVerification,
 };
