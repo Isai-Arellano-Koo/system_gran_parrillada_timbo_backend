@@ -1,6 +1,17 @@
+import dns from "node:dns/promises";
+import net from "node:net";
 import nodemailer from "nodemailer";
 import { env } from "../config/env";
 import { AppError } from "../middlewares/errorHandler";
+
+const resolveIpv4 = async (hostname: string) => {
+  if (net.isIP(hostname)) return hostname;
+  const resolved = await dns.lookup(hostname, { family: 4 });
+  if (!resolved.address) {
+    throw new AppError("No se pudo resolver el servidor SMTP.", 502);
+  }
+  return resolved.address;
+};
 
 export const isMailConfigured = () =>
   Boolean(env.smtp.host && env.smtp.user && env.smtp.pass);
@@ -14,13 +25,27 @@ export const sendVerificationEmail = async (to: string, code: string) => {
     );
   }
 
+  let host = env.smtp.host;
+  try {
+    host = await resolveIpv4(env.smtp.host);
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    console.error("No se pudo resolver el servidor SMTP:", error);
+    throw new AppError("No se pudo resolver el servidor SMTP.", 502);
+  }
+
   const transport = nodemailer.createTransport({
-    host: env.smtp.host,
+    host,
     port: env.smtp.port,
     secure: env.smtp.port === 465,
+    connectionTimeout: 15_000,
+    greetingTimeout: 15_000,
     auth: {
       user: env.smtp.user,
       pass: env.smtp.pass,
+    },
+    tls: {
+      servername: env.smtp.host,
     },
   });
 
