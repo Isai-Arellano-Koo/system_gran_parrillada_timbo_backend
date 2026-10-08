@@ -36,11 +36,8 @@ export const env = {
     expiresIn: process.env.JWT_EXPIRES_IN || "8h",
   },
   corsOrigin: process.env.CORS_ORIGIN || "*",
-  smtp: {
-    host: process.env.SMTP_HOST || "",
-    port: Number(process.env.SMTP_PORT || 587),
-    user: process.env.SMTP_USER || "",
-    pass: (process.env.SMTP_PASS || "").replace(/\s/g, ""),
-    from: process.env.SMTP_FROM || "",
+  brevo: {
+    apiKey: process.env.BREVO_API_KEY || "",
+    sender: process.env.BREVO_SENDER || "",
   },
 };
