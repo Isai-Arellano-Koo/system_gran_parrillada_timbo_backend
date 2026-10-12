@@ -8,7 +8,7 @@ import "../models";
 const run = async () => {
   try {
     await sequelize.authenticate();
-    await sequelize.sync({ alter: true });
+    await sequelize.sync({ alter: true }); // script aparte para acomodar tablas, no corre al iniciar
     console.log("Sincronización finalizada.");
     process.exit(0);
   } catch (error) {

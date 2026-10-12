@@ -16,6 +16,7 @@ export const errorHandler = (
   res: Response,
   _next: NextFunction
 ) => {
+  // AppError es un error que nosotros tiramos a propósito
   if (err instanceof AppError) {
     return res.status(err.statusCode).json({
       error: true,

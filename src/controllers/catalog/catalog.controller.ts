@@ -172,6 +172,7 @@ export const setRecipeController = async (
   }
 
   if (items.length === 0) {
+    // Receta vacía: se puede guardar, pero el pedido no se confirma sin ingredientes
     await RecipeItem.destroy({ where: { dish_id: dishId } });
     const dishes = await listDishesController();
     return dishes.find((d) => d.id === dishId);
@@ -198,6 +199,7 @@ export const setRecipeController = async (
     }
   }
 
+  // Reemplaza la receta entera, no ítem por ítem
   await RecipeItem.destroy({ where: { dish_id: dishId } });
   await RecipeItem.bulkCreate(
     items.map((item) => ({

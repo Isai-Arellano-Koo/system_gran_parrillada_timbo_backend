@@ -21,7 +21,7 @@ const messageHtml = (code: string) => `
 export const isMailConfigured = () => Boolean(env.brevo.apiKey && env.brevo.sender);
 
 export const sendVerificationEmail = async (to: string, code: string) => {
-  if (env.nodeEnv === "test") return;
+  if (env.nodeEnv === "test") return; // las pruebas no mandan correo de verdad
 
   if (!env.brevo.apiKey || !env.brevo.sender) {
     throw new AppError(
@@ -29,6 +29,7 @@ export const sendVerificationEmail = async (to: string, code: string) => {
     );
   }
 
+  // Railway no deja SMTP, así que se manda por HTTPS
   const response = await fetch("https://api.brevo.com/v3/smtp/email", {
     method: "POST",
     headers: {

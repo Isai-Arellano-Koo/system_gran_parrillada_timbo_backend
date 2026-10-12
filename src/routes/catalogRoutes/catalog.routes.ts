@@ -15,7 +15,7 @@ const router = Router();
 
 router.use(authMiddleware);
 
-router.get("/ingredients", listIngredientsHandler);
+router.get("/ingredients", listIngredientsHandler); // listar sí, crear/editar solo admin
 router.post("/ingredients", requireRoles("admin"), createIngredientHandler);
 router.patch(
   "/ingredients/:id",

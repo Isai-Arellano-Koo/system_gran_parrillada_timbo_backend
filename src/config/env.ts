@@ -15,6 +15,7 @@ const parseDatabaseUrl = (url: string) => {
   };
 };
 
+// Si hay DATABASE_URL, esa gana sobre DB_HOST / DB_PORT / etc.
 const fromUrl = databaseUrl ? parseDatabaseUrl(databaseUrl) : null;
 
 export const env = {

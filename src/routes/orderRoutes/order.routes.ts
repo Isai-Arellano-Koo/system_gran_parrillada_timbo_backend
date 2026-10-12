@@ -16,7 +16,7 @@ import { requireRoles } from "../../middlewares/roleMiddleware";
 
 const router = Router();
 
-router.use(authMiddleware);
+router.use(authMiddleware); // pedidos solo con sesión
 
 router.get("/tables", listTablesHandler);
 router.post("/tables/seed", requireRoles("admin"), seedTablesHandler);

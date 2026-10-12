@@ -11,7 +11,7 @@ import { requireRoles } from "../../middlewares/roleMiddleware";
 const router = Router();
 
 router.use(authMiddleware);
-router.use(requireRoles("admin"));
+router.use(requireRoles("admin")); // stock solo lo mueve administración
 
 router.post("/entries", registerStockEntryHandler);
 router.post("/adjustments", adjustStockHandler);

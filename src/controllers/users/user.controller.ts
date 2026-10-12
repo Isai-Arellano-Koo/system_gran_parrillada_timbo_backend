@@ -7,8 +7,8 @@ import { env } from "../../config/env";
 import { AppError } from "../../middlewares/errorHandler";
 import { USER_ROLES, type UserRole } from "../../types/enums";
 
-const CODE_TTL_MS = 15 * 60 * 1000;
-const RESEND_MS = 60 * 1000;
+const CODE_TTL_MS = 15 * 60 * 1000; // el código dura 15 minutos
+const RESEND_MS = 60 * 1000; // no se puede pedir otro hasta pasar un minuto
 
 const USERNAME_RE = /^[a-z0-9.]+$/;
 
@@ -89,6 +89,7 @@ const sameHash = (left: string, right: string) => {
   return a.length === b.length && timingSafeEqual(a, b);
 };
 
+// Marca el código como usado. Solo sirve una vez
 const consumeEmailCode = async (email: string, code: string | undefined) => {
   const clean = (code || "").trim();
   if (!/^\d{6}$/.test(clean)) {
@@ -132,7 +133,7 @@ export const issueEmailCode = async (emailRaw: string) => {
   const code = String(randomInt(100000, 1000000));
   const row = await EmailVerification.create({
     email,
-    code_hash: hashCode(code),
+    code_hash: hashCode(code), // guardamos el hash, no el número
     expires_at: new Date(Date.now() + CODE_TTL_MS),
   });
 
@@ -145,7 +146,7 @@ export const issueEmailCode = async (emailRaw: string) => {
 
   return {
     message: "Enviamos un código a ese correo. Caduca en 15 minutos.",
-    ...(env.nodeEnv === "test" ? { devCode: code } : {}),
+    ...(env.nodeEnv === "test" ? { devCode: code } : {}), // en pruebas sí devolvemos el código
   };
 };
 
@@ -166,7 +167,7 @@ export const confirmAccountController = async (userId: number, code: string) => 
 
   await consumeEmailCode(user.email, code);
   user.email_verified = true;
-  user.is_active = true;
+  user.is_active = true; // recién acá puede entrar al sistema
   await user.save();
   return user;
 };
@@ -222,7 +223,7 @@ export const createUserController = async (data: CreateUserInput) => {
     email,
     password_hash: await hashPassword(password),
     role,
-    is_active: false,
+    is_active: false, // queda pendiente hasta confirmar el correo
     email_verified: false,
   });
 
@@ -268,6 +269,7 @@ export const updateUserController = async (
       },
     });
     if (otherAdmins === 0) {
+      // No dejamos el local sin ningún admin
       throw new AppError("Debe quedar al menos un administrador activo");
     }
   }

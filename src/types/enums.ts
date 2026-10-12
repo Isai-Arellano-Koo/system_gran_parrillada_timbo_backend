@@ -1,3 +1,4 @@
+// Valores fijos que usa la base y el frontend
 export const USER_ROLES = ["admin", "mesero", "cocinero", "cajero"] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 

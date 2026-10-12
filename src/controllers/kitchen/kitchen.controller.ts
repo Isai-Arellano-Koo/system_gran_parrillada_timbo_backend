@@ -46,7 +46,7 @@ export const updateKitchenStatusController = async (
   const ticket = await KitchenTicket.findByPk(ticketId);
   if (!ticket) throw new AppError("Comanda no encontrada", 404);
 
-  ticket.status = status;
+  ticket.status = status; // pendiente -> en_preparacion -> listo
   ticket.status_changed_by = userId;
   ticket.status_changed_at = new Date();
   await ticket.save();

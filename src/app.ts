@@ -8,7 +8,7 @@ import { env } from "./config/env";
 const app = express();
 
 if (env.nodeEnv !== "test") {
-  app.use(morgan("dev"));
+  app.use(morgan("dev")); // en pruebas no queremos logs de cada request
 }
 app.use(
   cors({

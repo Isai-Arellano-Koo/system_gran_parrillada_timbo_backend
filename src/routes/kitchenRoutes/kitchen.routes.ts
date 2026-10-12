@@ -17,7 +17,7 @@ router.get(
 );
 router.patch(
   "/:ticketId/status",
-  requireRoles("cocinero", "admin"),
+  requireRoles("cocinero", "admin"), // el mesero ve, pero no cambia el estado
   updateKitchenStatusHandler
 );
 

@@ -10,7 +10,7 @@ export const sequelize = new Sequelize(
     port: env.db.port,
     dialect: env.db.dialect,
     logging: env.db.logging ? console.log : false,
-    dialectOptions: env.db.ssl
+    dialectOptions: env.db.ssl // Railway pide SSL
       ? {
           ssl: {
             require: true,
@@ -51,7 +51,7 @@ export const connectDatabase = async () => {
   await ensureUserRoleValues();
 
   if (env.db.sync) {
-    // Creates missing tables. alter:true on every boot duplicated unique indexes.
+    // Crea tablas que falten. No usamos alter:true porque duplicaba índices
     await sequelize.sync();
     console.log("Modelos sincronizados con la base de datos.");
   }

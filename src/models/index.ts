@@ -9,6 +9,7 @@ import { KitchenTicket } from "./KitchenTicket";
 import { InventoryMovement } from "./InventoryMovement";
 import { EmailVerification } from "./EmailVerification";
 
+// Relaciones entre tablas. Sequelize las usa al hacer include
 Dish.hasMany(RecipeItem, {
   foreignKey: "dish_id",
   as: "recipe_items",

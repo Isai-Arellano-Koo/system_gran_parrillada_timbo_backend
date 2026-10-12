@@ -19,6 +19,7 @@ type DetailInput = {
   observation?: string;
 };
 
+// Código único del pedido: fecha + 3 dígitos al azar
 const generateOrderCode = () => {
   const now = new Date();
   const stamp = now
@@ -29,6 +30,7 @@ const generateOrderCode = () => {
   return `ORD-${stamp}-${rand}`;
 };
 
+// Trae el pedido con mesa, mesero, platos y comanda
 const loadOrder = async (orderId: number) => {
   const order = await Order.findByPk(orderId, {
     include: [
@@ -46,6 +48,7 @@ const loadOrder = async (orderId: number) => {
   return order;
 };
 
+// Suma cuánto ingrediente pide cada plato del pedido
 const calcRequiredStock = async (orderId: number) => {
   const details = await OrderDetail.findAll({
     where: { order_id: orderId },
@@ -107,6 +110,7 @@ const calcRequiredStock = async (orderId: number) => {
 
 export const listTablesController = async () => {
   const count = await Table.count();
+  // Si no hay mesas, crea 30 para poder abrir pedidos
   if (count === 0) {
     await Table.bulkCreate(
       Array.from({ length: 30 }, (_, i) => ({
@@ -146,6 +150,7 @@ export const openOrderController = async (tableId: number, waiterId: number) => 
     throw new AppError("Mesa no válida", 404);
   }
 
+  // Una mesa no puede tener dos pedidos abiertos
   const open = await Order.findOne({
     where: { table_id: tableId, status: "en_edicion" },
   });
@@ -215,6 +220,7 @@ export const addOrderDetailController = async (
   });
 
   const details = await OrderDetail.findAll({ where: { order_id: orderId } });
+  // Recalcula el total cada vez que cambia un plato
   order.total = details.reduce(
     (sum, d) => sum + Number(d.unit_price) * Number(d.quantity),
     0
@@ -290,6 +296,7 @@ export const validateStockController = async (orderId: number) => {
 };
 
 export const confirmOrderController = async (orderId: number) => {
+  // Todo o nada: stock, estado del pedido y comanda se guardan juntos
   return sequelize.transaction(async (t) => {
     const order = await Order.findByPk(orderId, {
       transaction: t,
@@ -310,6 +317,7 @@ export const confirmOrderController = async (orderId: number) => {
 
     const { required } = await calcRequiredStock(orderId);
 
+    // Primero revisa stock. Si falta algo, no confirma
     for (const [, item] of required) {
       const ingredient = await Ingredient.findByPk(item.ingredient.id, {
         transaction: t,
@@ -343,6 +351,7 @@ export const confirmOrderController = async (orderId: number) => {
       throw new AppError("El pedido ya tiene una comanda");
     }
 
+    // Cocina recibe la comanda en pendiente
     await KitchenTicket.create(
       {
         order_id: orderId,
@@ -352,6 +361,7 @@ export const confirmOrderController = async (orderId: number) => {
       { transaction: t }
     );
 
+    // Descuenta ingredientes y deja el movimiento de salida
     for (const [, item] of required) {
       const ingredient = await Ingredient.findByPk(item.ingredient.id, {
         transaction: t,
@@ -404,6 +414,7 @@ export const cancelOrderController = async (
 
     const ticket = order.get("kitchen_ticket") as KitchenTicket | undefined;
 
+    // Si cocina todavía no empezó, el stock vuelve. Si ya se cocinó, es merma
     if (order.status === "confirmado" && ticket) {
       const movements = await InventoryMovement.findAll({
         where: { order_id: orderId, type: "salida_venta" },

@@ -8,6 +8,8 @@ const run = async () => {
     await sequelize.authenticate();
     await sequelize.sync({ alter: true });
 
+    // Usuarios de prueba. Si ya existen, no los vuelve a crear
+    // Usuarios de prueba. Si ya existen, no los vuelve a crear
     const users = [
       {
         name: "Administrador",

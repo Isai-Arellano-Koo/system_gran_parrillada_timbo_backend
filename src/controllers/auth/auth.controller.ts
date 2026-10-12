@@ -39,6 +39,7 @@ export const loginController = async (data: LoginInput) => {
     throw new AppError("El usuario o correo y la contraseña son obligatorios");
   }
 
+  // Puede entrar con correo o con nombre de usuario
   const user = identifier.includes("@")
     ? await User.findOne({ where: { email: identifier } })
     : await User.findOne({ where: { username: identifier } });
@@ -51,6 +52,7 @@ export const loginController = async (data: LoginInput) => {
     throw new AppError("Credenciales inválidas", 401);
   }
 
+  // Si todavía no confirmó el correo, no le damos sesión
   if (!user.email_verified) {
     let message =
       "Confirma tu correo para activar la cuenta. Te enviamos un código de 6 dígitos.";
@@ -79,6 +81,7 @@ export const loginController = async (data: LoginInput) => {
     };
   }
 
+  // Cuenta suspendida: mismo mensaje que si la clave estuviera mal
   if (!user.is_active) {
     throw new AppError("Credenciales inválidas", 401);
   }

@@ -11,7 +11,7 @@ const start = async () => {
   try {
     await connectDatabase();
 
-    app.listen(env.port, "0.0.0.0", () => {
+    app.listen(env.port, "0.0.0.0", () => { // 0.0.0.0 para que Railway lo vea
       console.log(`Server running on http://localhost:${env.port}`);
     });
   } catch (error) {

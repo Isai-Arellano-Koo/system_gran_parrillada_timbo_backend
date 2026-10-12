@@ -8,6 +8,7 @@ import kitchenRoutes from "./kitchenRoutes/kitchen.routes";
 import userRoutes from "./userRoutes/user.routes";
 
 const router = Router();
+// Cada módulo cuelga de /api/...
 
 router.use("/api/health", healthRoutes);
 router.use("/api/auth", authRoutes);
