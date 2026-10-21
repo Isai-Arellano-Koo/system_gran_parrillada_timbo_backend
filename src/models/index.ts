@@ -8,6 +8,9 @@ import { OrderDetail } from "./OrderDetail";
 import { KitchenTicket } from "./KitchenTicket";
 import { InventoryMovement } from "./InventoryMovement";
 import { EmailVerification } from "./EmailVerification";
+import { LoginAttempt } from "./LoginAttempt";
+import { LoginLock } from "./LoginLock";
+import { UserStatusChange } from "./UserStatusChange";
 
 // Relaciones entre tablas. Sequelize las usa al hacer include
 Dish.hasMany(RecipeItem, {
@@ -79,6 +82,22 @@ Order.hasMany(InventoryMovement, {
 });
 InventoryMovement.belongsTo(Order, { foreignKey: "order_id", as: "order" });
 
+User.hasMany(UserStatusChange, { foreignKey: "user_id", as: "status_changes" });
+UserStatusChange.belongsTo(User, { foreignKey: "user_id", as: "user" });
+User.hasMany(UserStatusChange, {
+  foreignKey: "changed_by",
+  as: "status_changes_made",
+});
+UserStatusChange.belongsTo(User, {
+  foreignKey: "changed_by",
+  as: "changed_by_user",
+});
+
+User.hasMany(LoginAttempt, { foreignKey: "user_id", as: "login_attempts" });
+LoginAttempt.belongsTo(User, { foreignKey: "user_id", as: "user" });
+User.hasMany(LoginLock, { foreignKey: "user_id", as: "login_locks" });
+LoginLock.belongsTo(User, { foreignKey: "user_id", as: "user" });
+
 export {
   User,
   Ingredient,
@@ -90,4 +109,7 @@ export {
   KitchenTicket,
   InventoryMovement,
   EmailVerification,
+  LoginAttempt,
+  LoginLock,
+  UserStatusChange,
 };

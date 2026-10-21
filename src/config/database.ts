@@ -59,4 +59,7 @@ export const connectDatabase = async () => {
   await sequelize.query(
     `ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT true`
   );
+  await sequelize.query(
+    `ALTER TABLE email_verifications ADD COLUMN IF NOT EXISTS purpose VARCHAR(32) NOT NULL DEFAULT 'confirm-email'`
+  );
 };

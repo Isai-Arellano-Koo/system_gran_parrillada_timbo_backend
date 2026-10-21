@@ -10,7 +10,16 @@ type IngredientInput = {
   name?: string;
   unit?: MeasurementUnit;
   stock_minimum?: number;
+  stock_current?: unknown;
   is_active?: boolean;
+};
+
+const rejectDirectStockEdit = (data: IngredientInput) => {
+  if (data.stock_current !== undefined) {
+    throw new AppError(
+      "El stock actual se registra desde Inventario, no desde Ingredientes"
+    );
+  }
 };
 
 type DishInput = {
@@ -33,6 +42,7 @@ export const listIngredientsController = async (activeOnly = false) => {
 };
 
 export const createIngredientController = async (data: IngredientInput) => {
+  rejectDirectStockEdit(data);
   const name = data.name?.trim();
   if (!name) {
     throw new AppError("El nombre es obligatorio");
@@ -58,6 +68,7 @@ export const updateIngredientController = async (
   id: number,
   data: IngredientInput
 ) => {
+  rejectDirectStockEdit(data);
   const ingredient = await Ingredient.findByPk(id);
   if (!ingredient) {
     throw new AppError("Ingrediente no encontrado", 404);

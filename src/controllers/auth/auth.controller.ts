@@ -1,14 +1,21 @@
 import { User } from "../../models";
-import { comparePassword } from "../../helpers/password";
+import { comparePassword, hashPassword } from "../../helpers/password";
 import {
   buildAuthResponse,
   signConfirmToken,
   verifyConfirmToken,
 } from "../../helpers/authTokens";
+import {
+  assertNotLocked,
+  clearLoginLock,
+  recordFailedLogin,
+  recordSuccessfulLogin,
+} from "../../helpers/loginLock";
 import { AppError } from "../../middlewares/errorHandler";
 import type { UserRole } from "../../types/enums";
 import {
   confirmAccountController,
+  consumePasswordResetCode,
   createUserController,
   issueEmailCode,
 } from "../users/user.controller";
@@ -30,6 +37,15 @@ type RegisterInput = {
 
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
 
+const findUserByIdentifier = async (identifier: string) => {
+  return identifier.includes("@")
+    ? User.findOne({ where: { email: identifier } })
+    : User.findOne({ where: { username: identifier } });
+};
+
+const RESET_MESSAGE =
+  "Si la cuenta existe, enviamos un código de 6 dígitos. Caduca en 15 minutos.";
+
 export const loginController = async (data: LoginInput) => {
   const username = (data.username || "").trim().toLowerCase();
   const email = normalizeEmail(data.email || "");
@@ -40,17 +56,19 @@ export const loginController = async (data: LoginInput) => {
   }
 
   // Puede entrar con correo o con nombre de usuario
-  const user = identifier.includes("@")
-    ? await User.findOne({ where: { email: identifier } })
-    : await User.findOne({ where: { username: identifier } });
+  const user = await findUserByIdentifier(identifier);
+  await assertNotLocked(user?.id ?? null, identifier);
+
   if (!user) {
-    throw new AppError("Credenciales inválidas", 401);
+    await recordFailedLogin(null, identifier);
   }
 
   const valid = await comparePassword(data.password, user.password_hash);
   if (!valid) {
-    throw new AppError("Credenciales inválidas", 401);
+    await recordFailedLogin(user.id, identifier);
   }
+
+  await clearLoginLock(user.id, identifier);
 
   // Si todavía no confirmó el correo, no le damos sesión
   if (!user.email_verified) {
@@ -83,10 +101,69 @@ export const loginController = async (data: LoginInput) => {
 
   // Cuenta suspendida: mismo mensaje que si la clave estuviera mal
   if (!user.is_active) {
-    throw new AppError("Credenciales inválidas", 401);
+    await recordFailedLogin(user.id, identifier);
   }
 
+  await recordSuccessfulLogin(user.id, identifier);
   return buildAuthResponse(user);
+};
+
+export const requestPasswordResetController = async (data: LoginInput) => {
+  const identifier = ((data.username || data.email || "") as string)
+    .trim()
+    .toLowerCase();
+  if (!identifier) {
+    throw new AppError("Indica el usuario o el correo de la cuenta");
+  }
+
+  const user = await findUserByIdentifier(identifier);
+  if (!user) {
+    return { message: RESET_MESSAGE };
+  }
+
+  const sent = await issueEmailCode(user.email, "password-reset");
+  return {
+    message: RESET_MESSAGE,
+    emailHint: user.email,
+    ...(sent.devCode ? { devCode: sent.devCode } : {}),
+  };
+};
+
+export const confirmPasswordResetController = async (data: {
+  email?: string;
+  username?: string;
+  code?: string;
+  password?: string;
+}) => {
+  const identifier = ((data.username || data.email || "") as string)
+    .trim()
+    .toLowerCase();
+  const password = data.password || "";
+
+  if (!identifier) {
+    throw new AppError("Indica el usuario o el correo de la cuenta");
+  }
+  if (password.length < 8) {
+    throw new AppError("La contraseña debe tener al menos 8 caracteres");
+  }
+
+  const user = await findUserByIdentifier(identifier);
+  if (!user) {
+    throw new AppError("El código es incorrecto o ya caducó");
+  }
+
+  await consumePasswordResetCode(user.email, data.code || "");
+  user.password_hash = await hashPassword(password);
+  await user.save();
+  await clearLoginLock(user.id, identifier);
+  await clearLoginLock(user.id, user.email);
+  if (user.username) {
+    await clearLoginLock(user.id, user.username);
+  }
+
+  return {
+    message: "Contraseña actualizada. Ya puedes iniciar sesión.",
+  };
 };
 
 export const confirmEmailController = async (token: string, code: string) => {

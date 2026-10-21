@@ -13,6 +13,7 @@ export class EmailVerification extends Model<
 > {
   declare id: CreationOptional<number>;
   declare email: string;
+  declare purpose: CreationOptional<string>;
   declare code_hash: string;
   declare expires_at: Date;
   declare used_at: CreationOptional<Date | null>;
@@ -30,6 +31,11 @@ EmailVerification.init(
     email: {
       type: DataTypes.STRING(160),
       allowNull: false,
+    },
+    purpose: {
+      type: DataTypes.STRING(32),
+      allowNull: false,
+      defaultValue: "confirm-email",
     },
     code_hash: {
       type: DataTypes.STRING(64),

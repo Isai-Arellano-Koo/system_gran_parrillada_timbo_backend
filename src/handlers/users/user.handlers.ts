@@ -3,6 +3,7 @@ import {
   createUserController,
   getUserController,
   listUsersController,
+  listUserStatusChangesController,
   updateUserController,
 } from "../../controllers/users/user.controller";
 import { AppError } from "../../middlewares/errorHandler";
@@ -64,6 +65,19 @@ export const updateUserHandler = async (req: Request, res: Response) => {
     }
     const user = await updateUserController(id, req.user.id, req.body);
     return res.status(200).json(user);
+  } catch (error) {
+    return mapUserError(error, res);
+  }
+};
+
+export const listUserStatusChangesHandler = async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({ error: true, message: "Usuario inválido" });
+    }
+    const changes = await listUserStatusChangesController(id);
+    return res.status(200).json(changes);
   } catch (error) {
     return mapUserError(error, res);
   }

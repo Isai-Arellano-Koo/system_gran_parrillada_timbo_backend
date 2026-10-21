@@ -2,11 +2,17 @@ import { Request, Response, NextFunction } from "express";
 
 export class AppError extends Error {
   statusCode: number;
+  extra?: Record<string, unknown>;
 
-  constructor(message: string, statusCode = 400) {
+  constructor(
+    message: string,
+    statusCode = 400,
+    extra?: Record<string, unknown>
+  ) {
     super(message);
     this.statusCode = statusCode;
     this.name = "AppError";
+    this.extra = extra;
   }
 }
 
@@ -21,6 +27,7 @@ export const errorHandler = (
     return res.status(err.statusCode).json({
       error: true,
       message: err.message,
+      ...(err.extra || {}),
     });
   }
 

@@ -1,9 +1,11 @@
 import { Request, Response } from "express";
 import {
   confirmEmailController,
+  confirmPasswordResetController,
   getMeController,
   loginController,
   registerController,
+  requestPasswordResetController,
   resendConfirmEmailController,
 } from "../../controllers/auth/auth.controller";
 import { AppError } from "../../middlewares/errorHandler";
@@ -13,6 +15,7 @@ const mapAuthError = (error: unknown, res: Response) => {
     return res.status(error.statusCode).json({
       error: true,
       message: error.message,
+      ...(error.extra || {}),
     });
   }
 
@@ -47,6 +50,24 @@ export const confirmEmailHandler = async (req: Request, res: Response) => {
 export const resendConfirmEmailHandler = async (req: Request, res: Response) => {
   try {
     const result = await resendConfirmEmailController(req.body?.confirmationToken);
+    return res.status(200).json(result);
+  } catch (error) {
+    return mapAuthError(error, res);
+  }
+};
+
+export const requestPasswordResetHandler = async (req: Request, res: Response) => {
+  try {
+    const result = await requestPasswordResetController(req.body);
+    return res.status(200).json(result);
+  } catch (error) {
+    return mapAuthError(error, res);
+  }
+};
+
+export const confirmPasswordResetHandler = async (req: Request, res: Response) => {
+  try {
+    const result = await confirmPasswordResetController(req.body);
     return res.status(200).json(result);
   } catch (error) {
     return mapAuthError(error, res);
