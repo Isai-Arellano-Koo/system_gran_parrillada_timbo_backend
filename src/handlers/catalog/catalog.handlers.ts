@@ -42,7 +42,12 @@ export const updateIngredientHandler = (req: Request, res: Response) =>
   );
 
 export const listDishesHandler = (req: Request, res: Response) =>
-  handle(res, () => listDishesController(req.query.active === "true"));
+  handle(res, () => {
+    // El mesero solo ve lo que está activo en la carta
+    const activeOnly =
+      req.user?.role !== "admin" || req.query.active === "true";
+    return listDishesController(activeOnly);
+  });
 
 export const createDishHandler = (req: Request, res: Response) =>
   handle(res, () => createDishController(req.body), 201);
