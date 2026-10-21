@@ -7,6 +7,7 @@ import {
   createDishController,
   updateDishController,
   setRecipeController,
+  listDishStatusChangesController,
 } from "../../controllers/catalog/catalog.controller";
 import { AppError } from "../../middlewares/errorHandler";
 
@@ -53,7 +54,15 @@ export const createDishHandler = (req: Request, res: Response) =>
   handle(res, () => createDishController(req.body), 201);
 
 export const updateDishHandler = (req: Request, res: Response) =>
-  handle(res, () => updateDishController(Number(req.params.id), req.body));
+  handle(res, () => {
+    if (!req.user?.id) {
+      throw new AppError("No autorizado", 401);
+    }
+    return updateDishController(Number(req.params.id), req.user.id, req.body);
+  });
+
+export const listDishStatusChangesHandler = (req: Request, res: Response) =>
+  handle(res, () => listDishStatusChangesController(Number(req.params.id)));
 
 export const setRecipeHandler = (req: Request, res: Response) =>
   handle(res, () => {

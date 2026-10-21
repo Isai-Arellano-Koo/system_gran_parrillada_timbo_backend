@@ -7,6 +7,7 @@ import {
   createDishHandler,
   updateDishHandler,
   setRecipeHandler,
+  listDishStatusChangesHandler,
 } from "../../handlers/catalog/catalog.handlers";
 import { authMiddleware } from "../../middlewares/authMiddleware";
 import { requireRoles } from "../../middlewares/roleMiddleware";
@@ -25,6 +26,11 @@ router.patch(
 
 router.get("/dishes", listDishesHandler);
 router.post("/dishes", requireRoles("admin"), createDishHandler);
+router.get(
+  "/dishes/:id/status-changes",
+  requireRoles("admin"),
+  listDishStatusChangesHandler
+);
 router.patch("/dishes/:id", requireRoles("admin"), updateDishHandler);
 router.put(
   "/dishes/:dishId/recipe",

@@ -11,6 +11,7 @@ import { EmailVerification } from "./EmailVerification";
 import { LoginAttempt } from "./LoginAttempt";
 import { LoginLock } from "./LoginLock";
 import { UserStatusChange } from "./UserStatusChange";
+import { DishStatusChange } from "./DishStatusChange";
 
 // Relaciones entre tablas. Sequelize las usa al hacer include
 Dish.hasMany(RecipeItem, {
@@ -93,6 +94,17 @@ UserStatusChange.belongsTo(User, {
   as: "changed_by_user",
 });
 
+Dish.hasMany(DishStatusChange, { foreignKey: "dish_id", as: "status_changes" });
+DishStatusChange.belongsTo(Dish, { foreignKey: "dish_id", as: "dish" });
+User.hasMany(DishStatusChange, {
+  foreignKey: "changed_by",
+  as: "dish_status_changes_made",
+});
+DishStatusChange.belongsTo(User, {
+  foreignKey: "changed_by",
+  as: "changed_by_user",
+});
+
 User.hasMany(LoginAttempt, { foreignKey: "user_id", as: "login_attempts" });
 LoginAttempt.belongsTo(User, { foreignKey: "user_id", as: "user" });
 User.hasMany(LoginLock, { foreignKey: "user_id", as: "login_locks" });
@@ -112,4 +124,5 @@ export {
   LoginAttempt,
   LoginLock,
   UserStatusChange,
+  DishStatusChange,
 };

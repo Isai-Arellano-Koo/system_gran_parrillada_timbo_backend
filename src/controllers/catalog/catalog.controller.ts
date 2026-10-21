@@ -1,5 +1,5 @@
 import { Op } from "sequelize";
-import { Ingredient, Dish, RecipeItem } from "../../models";
+import { Ingredient, Dish, RecipeItem, DishStatusChange, User } from "../../models";
 import { AppError } from "../../middlewares/errorHandler";
 import {
   MEASUREMENT_UNITS,
@@ -27,6 +27,7 @@ type DishInput = {
   price?: number;
   description?: string;
   is_active?: boolean;
+  status_reason?: string;
 };
 
 type RecipeItemInput = {
@@ -137,7 +138,11 @@ export const createDishController = async (data: DishInput) => {
   });
 };
 
-export const updateDishController = async (id: number, data: DishInput) => {
+export const updateDishController = async (
+  id: number,
+  actorId: number,
+  data: DishInput
+) => {
   const dish = await Dish.findByPk(id);
   if (!dish) throw new AppError("Plato no encontrado", 404);
 
@@ -163,12 +168,45 @@ export const updateDishController = async (id: number, data: DishInput) => {
     dish.description = data.description?.trim() || null;
   }
 
-  if (data.is_active !== undefined) {
-    dish.is_active = Boolean(data.is_active);
+  const nextActive =
+    data.is_active === undefined ? dish.is_active : Boolean(data.is_active);
+  const statusChanged = nextActive !== dish.is_active;
+  let statusReason = "";
+  if (statusChanged) {
+    statusReason = (data.status_reason || "").trim();
+    if (statusReason.length < 3) {
+      throw new AppError("Indica el motivo del cambio de estado");
+    }
   }
 
+  const previousActive = dish.is_active;
+  dish.is_active = nextActive;
   await dish.save();
+
+  if (statusChanged) {
+    await DishStatusChange.create({
+      dish_id: dish.id,
+      previous_is_active: previousActive,
+      next_is_active: nextActive,
+      reason: statusReason,
+      changed_by: actorId,
+    });
+  }
+
   return dish;
+};
+
+export const listDishStatusChangesController = async (dishId: number) => {
+  const dish = await Dish.findByPk(dishId, { attributes: ["id"] });
+  if (!dish) throw new AppError("Plato no encontrado", 404);
+
+  return DishStatusChange.findAll({
+    where: { dish_id: dishId },
+    include: [
+      { model: User, as: "changed_by_user", attributes: ["id", "name", "email"] },
+    ],
+    order: [["created_at", "DESC"]],
+  });
 };
 
 export const setRecipeController = async (
