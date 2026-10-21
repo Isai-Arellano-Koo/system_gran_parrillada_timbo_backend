@@ -178,16 +178,12 @@ export const setRecipeController = async (
   const dish = await Dish.findByPk(dishId);
   if (!dish) throw new AppError("Plato no encontrado", 404);
 
-  if (!Array.isArray(items)) {
-    throw new AppError("La receta no es válida");
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new AppError("La receta debe tener al menos un ingrediente");
   }
 
-  if (items.length === 0) {
-    // Receta vacía: se puede guardar, pero el pedido no se confirma sin ingredientes
-    await RecipeItem.destroy({ where: { dish_id: dishId } });
-    const dishes = await listDishesController();
-    return dishes.find((d) => d.id === dishId);
-  }
+  const currentItems = await RecipeItem.findAll({ where: { dish_id: dishId } });
+  const alreadyInRecipe = new Set(currentItems.map((row) => row.ingredient_id));
 
   const seen = new Set<number>();
   for (const item of items) {
@@ -205,12 +201,16 @@ export const setRecipeController = async (
     }
 
     const ingredient = await Ingredient.findByPk(item.ingredient_id);
-    if (!ingredient || !ingredient.is_active) {
+    if (!ingredient) {
       throw new AppError(`Ingrediente ${item.ingredient_id} no válido`);
+    }
+    // La cantidad va en la unidad del insumo. Si ya estaba en la receta, se puede dejar
+    if (!ingredient.is_active && !alreadyInRecipe.has(item.ingredient_id)) {
+      throw new AppError(`${ingredient.name} no está activo`);
     }
   }
 
-  // Reemplaza la receta entera, no ítem por ítem
+  // Reemplaza la receta actual. Los pedidos ya confirmados no se tocan
   await RecipeItem.destroy({ where: { dish_id: dishId } });
   await RecipeItem.bulkCreate(
     items.map((item) => ({
