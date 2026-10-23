@@ -362,6 +362,19 @@ export const updateUserController = async (
   return toPublic(user);
 };
 
+const statusChangeIncludes = [
+  {
+    model: User,
+    as: "user" as const,
+    attributes: ["id", "name", "username", "email", "role"],
+  },
+  {
+    model: User,
+    as: "changed_by_user" as const,
+    attributes: ["id", "name", "username", "email"],
+  },
+];
+
 export const listUserStatusChangesController = async (userId: number) => {
   const user = await User.findByPk(userId, { attributes: ["id"] });
   if (!user) {
@@ -370,9 +383,14 @@ export const listUserStatusChangesController = async (userId: number) => {
 
   return UserStatusChange.findAll({
     where: { user_id: userId },
-    include: [
-      { model: User, as: "changed_by_user", attributes: ["id", "name", "email"] },
-    ],
+    include: statusChangeIncludes,
+    order: [["created_at", "DESC"]],
+  });
+};
+
+export const listAllUserStatusChangesController = async () => {
+  return UserStatusChange.findAll({
+    include: statusChangeIncludes,
     order: [["created_at", "DESC"]],
   });
 };
