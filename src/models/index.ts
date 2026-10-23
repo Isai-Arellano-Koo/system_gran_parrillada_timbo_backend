@@ -1,5 +1,6 @@
 import { User } from "./User";
 import { Ingredient } from "./Ingredient";
+import { Category } from "./Category";
 import { Dish } from "./Dish";
 import { RecipeItem } from "./RecipeItem";
 import { Table } from "./Table";
@@ -14,6 +15,12 @@ import { UserStatusChange } from "./UserStatusChange";
 import { DishStatusChange } from "./DishStatusChange";
 
 // Relaciones entre tablas. Sequelize las usa al hacer include
+Category.hasMany(Dish, {
+  foreignKey: "category_id",
+  as: "dishes",
+});
+Dish.belongsTo(Category, { foreignKey: "category_id", as: "category" });
+
 Dish.hasMany(RecipeItem, {
   foreignKey: "dish_id",
   as: "recipe_items",
@@ -113,6 +120,7 @@ LoginLock.belongsTo(User, { foreignKey: "user_id", as: "user" });
 export {
   User,
   Ingredient,
+  Category,
   Dish,
   RecipeItem,
   Table,

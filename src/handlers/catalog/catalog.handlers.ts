@@ -9,6 +9,10 @@ import {
   updateDishController,
   setRecipeController,
   listDishStatusChangesController,
+  listCategoriesController,
+  createCategoryController,
+  updateCategoryController,
+  removeCategoryController,
 } from "../../controllers/catalog/catalog.controller";
 import { AppError } from "../../middlewares/errorHandler";
 
@@ -78,4 +82,29 @@ export const setRecipeHandler = (req: Request, res: Response) =>
         ? req.body
         : [];
     return setRecipeController(Number(req.params.dishId), items);
+  });
+
+export const listCategoriesHandler = (req: Request, res: Response) =>
+  handle(res, () =>
+    listCategoriesController(
+      req.user?.role !== "admin" || req.query.active === "true"
+    )
+  );
+
+export const createCategoryHandler = (req: Request, res: Response) =>
+  handle(res, () => {
+    if (!req.user?.id) throw new AppError("No autorizado", 401);
+    return createCategoryController(req.user.id, req.body);
+  }, 201);
+
+export const updateCategoryHandler = (req: Request, res: Response) =>
+  handle(res, () => {
+    if (!req.user?.id) throw new AppError("No autorizado", 401);
+    return updateCategoryController(Number(req.params.id), req.user.id, req.body);
+  });
+
+export const removeCategoryHandler = (req: Request, res: Response) =>
+  handle(res, () => {
+    if (!req.user?.id) throw new AppError("No autorizado", 401);
+    return removeCategoryController(Number(req.params.id), req.user.id);
   });

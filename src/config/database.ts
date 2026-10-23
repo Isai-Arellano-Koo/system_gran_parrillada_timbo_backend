@@ -62,4 +62,45 @@ export const connectDatabase = async () => {
   await sequelize.query(
     `ALTER TABLE email_verifications ADD COLUMN IF NOT EXISTS purpose VARCHAR(32) NOT NULL DEFAULT 'confirm-email'`
   );
+
+  await sequelize.query(`
+    CREATE TABLE IF NOT EXISTS categories (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(120) NOT NULL UNIQUE,
+      is_active BOOLEAN NOT NULL DEFAULT true,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMP WITH TIME ZONE,
+      updated_at TIMESTAMP WITH TIME ZONE
+    )
+  `);
+  await sequelize.query(
+    `ALTER TABLE dishes ADD COLUMN IF NOT EXISTS presentation VARCHAR(80) NOT NULL DEFAULT ''`
+  );
+  await sequelize.query(
+    `ALTER TABLE dishes ADD COLUMN IF NOT EXISTS category_disabled BOOLEAN NOT NULL DEFAULT false`
+  );
+  await sequelize.query(
+    `ALTER TABLE dishes ADD COLUMN IF NOT EXISTS category_id INTEGER`
+  );
+  await sequelize.query(
+    `ALTER TABLE dishes DROP CONSTRAINT IF EXISTS dishes_name_key`
+  );
+  await sequelize.query(`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM dishes WHERE category_id IS NULL
+      ) THEN
+        ALTER TABLE dishes
+          ADD CONSTRAINT dishes_category_id_fkey
+          FOREIGN KEY (category_id) REFERENCES categories(id);
+      END IF;
+    EXCEPTION
+      WHEN duplicate_object THEN NULL;
+      WHEN undefined_table THEN NULL;
+    END $$
+  `);
+  await sequelize.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS dishes_name_presentation_unique
+    ON dishes (name, presentation)
+  `);
 };

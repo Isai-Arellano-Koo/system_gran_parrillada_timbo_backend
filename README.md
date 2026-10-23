@@ -57,8 +57,11 @@ cp .env.example .env
 # 4. Crear/actualizar las tablas
 npm run db:sync
 
-# 5. Cargar datos iniciales (usuarios de prueba y 30 mesas)
+# 5. Cargar datos iniciales (usuarios, 30 mesas, categorías y carta)
 npm run db:seed
+
+# Vaciar la base y volver a cargar la semilla (incluye la carta de setiembre 2026)
+npm run db:reset
 
 # 6. Levantar el servidor
 npm run dev
@@ -94,7 +97,8 @@ El archivo `.env` está en `.gitignore` y nunca debe subirse al repositorio.
 | `npm run build` | Compila TypeScript a `dist/` |
 | `npm start` | Ejecuta la versión compilada (producción) |
 | `npm run db:sync` | Sincroniza los modelos con la base de datos |
-| `npm run db:seed` | Crea usuarios de prueba y 30 mesas |
+| `npm run db:seed` | Crea usuarios de prueba, 30 mesas, categorías y la carta | 
+| `npm run db:reset` | Vacía la base de datos y vuelve a cargar la semilla |
 | `npm test` | Ejecuta las pruebas con Vitest |
 
 ## Usuarios de prueba (solo desarrollo)
@@ -139,11 +143,15 @@ Todas las rutas empiezan con `/api`. Salvo las públicas, requieren el encabezad
 
 | Método | Ruta | Descripción | Acceso |
 |---|---|---|---|
+| GET | `/api/catalog/categories` | Lista categorías | Autenticado |
+| POST | `/api/catalog/categories` | Crea o reactiva una categoría | admin |
+| PATCH | `/api/catalog/categories/:id` | Renombra o reactiva | admin |
+| DELETE | `/api/catalog/categories/:id` | Quita la categoría e inhabilita sus platos | admin |
 | GET | `/api/catalog/ingredients` | Lista ingredientes | Autenticado |
 | POST | `/api/catalog/ingredients` | Crea ingrediente | admin |
 | PATCH | `/api/catalog/ingredients/:id` | Modifica o activa/desactiva | admin |
 | GET | `/api/catalog/dishes` | Lista platos | Autenticado |
-| POST | `/api/catalog/dishes` | Crea plato | admin |
+| POST | `/api/catalog/dishes` | Crea plato (requiere categoría activa) | admin |
 | PATCH | `/api/catalog/dishes/:id` | Modifica o activa/desactiva | admin |
 | PUT | `/api/catalog/dishes/:dishId/recipe` | Define la receta del plato | admin |
 
@@ -194,7 +202,8 @@ Todas las rutas empiezan con `/api`. Salvo las públicas, requieren el encabezad
 | `users` | Colaboradores: rol, estado activo, correo verificado, contraseña hasheada |
 | `email_verifications` | Códigos de confirmación de correo (guardados como hash, con vencimiento y uso) |
 | `ingredients` | Insumos: unidad, stock actual, stock mínimo, estado |
-| `dishes` | Platos del menú: precio, descripción, estado |
+| `categories` | Categorías de la carta; al quitarlas se inhabilitan sus platos |
+| `dishes` | Platos del menú: categoría, presentación, precio, descripción, estado |
 | `recipe_items` | Ingredientes y cantidades de cada plato |
 | `tables` | Las 30 mesas del salón |
 | `orders` | Pedidos: mesa, mesero, estado, total, motivo de cancelación |

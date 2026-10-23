@@ -1,4 +1,5 @@
 import {
+  Category,
   Dish,
   Ingredient,
   InventoryMovement,
@@ -206,8 +207,11 @@ export const addOrderDetailController = async (
     throw new AppError("La cantidad debe ser un entero mayor que cero");
   }
 
-  const dish = await Dish.findByPk(dishId);
-  if (!dish || !dish.is_active) {
+  const dish = await Dish.findByPk(dishId, {
+    include: [{ model: Category, as: "category" }],
+  });
+  const category = (dish as Dish & { category?: Category | null })?.category;
+  if (!dish || !dish.is_active || !category?.is_active) {
     throw new AppError("El plato no está disponible");
   }
 
