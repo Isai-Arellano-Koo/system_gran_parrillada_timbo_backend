@@ -61,6 +61,7 @@ export const loginController = async (data: LoginInput) => {
 
   if (!user) {
     await recordFailedLogin(null, identifier);
+    throw new AppError("Credenciales inválidas", 401);
   }
 
   const valid = await comparePassword(data.password, user.password_hash);
