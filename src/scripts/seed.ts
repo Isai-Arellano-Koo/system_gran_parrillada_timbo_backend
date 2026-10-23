@@ -1,8 +1,9 @@
 import { hashPassword } from "../helpers/password";
-import { User, Table, Category, Dish } from "../models";
+import { User, Table, Category, Dish, Ingredient, RecipeItem } from "../models";
 import { sequelize } from "../config/database";
 import "../models";
 import { CARTA_CATEGORIES, CARTA_DISHES } from "./cartaTimboSet2026";
+import { CARTA_INGREDIENTS, CARTA_RECIPES } from "./cartaRecipes";
 
 const shouldReset =
   process.argv.includes("--reset") || process.env.RESET_DB === "true";
@@ -129,6 +130,52 @@ const run = async () => {
     console.log(
       `Carta: ${createdDishes} platos nuevos, ${updatedDishes} actualizados.`
     );
+
+    const ingredientByName = new Map<string, Ingredient>();
+    for (const item of CARTA_INGREDIENTS) {
+      const [ingredient] = await Ingredient.findOrCreate({
+        where: { name: item.name },
+        defaults: {
+          name: item.name,
+          unit: item.unit,
+          stock_minimum: 0,
+          is_active: true,
+        },
+      });
+      ingredient.unit = item.unit;
+      ingredient.is_active = true;
+      await ingredient.save();
+      ingredientByName.set(item.name, ingredient);
+    }
+    console.log(`${ingredientByName.size} ingredientes de receta.`);
+
+    let recipesSet = 0;
+    for (const recipe of CARTA_RECIPES) {
+      const dish = await Dish.findOne({
+        where: { name: recipe.name, presentation: recipe.presentation },
+      });
+      if (!dish) {
+        console.warn(
+          `No hay plato para receta: ${recipe.name} — ${recipe.presentation}`
+        );
+        continue;
+      }
+      const lines = recipe.items.map((line) => {
+        const ingredient = ingredientByName.get(line.ingredient);
+        if (!ingredient) {
+          throw new Error(`Falta ingrediente "${line.ingredient}"`);
+        }
+        return {
+          dish_id: dish.id,
+          ingredient_id: ingredient.id,
+          quantity: line.quantity,
+        };
+      });
+      await RecipeItem.destroy({ where: { dish_id: dish.id } });
+      await RecipeItem.bulkCreate(lines);
+      recipesSet += 1;
+    }
+    console.log(`${recipesSet} recetas asignadas desde la carta.`);
 
     console.log("Seed completado.");
     process.exit(0);
