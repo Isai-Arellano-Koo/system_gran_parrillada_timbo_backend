@@ -4,6 +4,7 @@ import {
   createIngredientController,
   updateIngredientController,
   listDishesController,
+  getDishController,
   createDishController,
   updateDishController,
   setRecipeController,
@@ -49,6 +50,11 @@ export const listDishesHandler = (req: Request, res: Response) =>
       req.user?.role !== "admin" || req.query.active === "true";
     return listDishesController(activeOnly);
   });
+
+export const getDishHandler = (req: Request, res: Response) =>
+  handle(res, () =>
+    getDishController(Number(req.params.id), req.user?.role !== "admin")
+  );
 
 export const createDishHandler = (req: Request, res: Response) =>
   handle(res, () => createDishController(req.body), 201);

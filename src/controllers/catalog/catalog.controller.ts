@@ -120,6 +120,22 @@ export const listDishesController = async (activeOnly = false) => {
   });
 };
 
+export const getDishController = async (id: number, activeOnly = false) => {
+  const dish = await Dish.findByPk(id, {
+    include: [
+      {
+        model: RecipeItem,
+        as: "recipe_items",
+        include: [{ model: Ingredient, as: "ingredient" }],
+      },
+    ],
+  });
+  if (!dish || (activeOnly && !dish.is_active)) {
+    throw new AppError("Plato no encontrado", 404);
+  }
+  return dish;
+};
+
 export const createDishController = async (data: DishInput) => {
   const name = data.name?.trim();
   const price = Number(data.price);

@@ -4,6 +4,7 @@ import {
   createIngredientHandler,
   updateIngredientHandler,
   listDishesHandler,
+  getDishHandler,
   createDishHandler,
   updateDishHandler,
   setRecipeHandler,
@@ -31,6 +32,7 @@ router.get(
   requireRoles("admin"),
   listDishStatusChangesHandler
 );
+router.get("/dishes/:id", getDishHandler);
 router.patch("/dishes/:id", requireRoles("admin"), updateDishHandler);
 router.put(
   "/dishes/:dishId/recipe",
