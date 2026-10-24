@@ -3,6 +3,7 @@ import {
   openOrderHandler,
   addOrderDetailHandler,
   removeOrderDetailHandler,
+  updateOrderDetailHandler,
   validateStockHandler,
   confirmOrderHandler,
   cancelOrderHandler,
@@ -32,6 +33,11 @@ router.post(
   "/:orderId/details",
   requireRoles("mesero", "admin"),
   addOrderDetailHandler
+);
+router.patch(
+  "/:orderId/details/:detailId",
+  requireRoles("mesero", "admin"),
+  updateOrderDetailHandler
 );
 router.delete(
   "/:orderId/details/:detailId",

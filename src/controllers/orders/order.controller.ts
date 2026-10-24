@@ -260,6 +260,57 @@ export const removeOrderDetailController = async (
   return loadOrder(orderId);
 };
 
+export const updateOrderDetailController = async (
+  orderId: number,
+  detailId: number,
+  data: DetailInput
+) => {
+  const order = await Order.findByPk(orderId);
+  if (!order) throw new AppError("Pedido no encontrado", 404);
+  if (order.status !== "en_edicion") {
+    throw new AppError("Solo se pueden editar pedidos en edición");
+  }
+
+  const detail = await OrderDetail.findOne({
+    where: { id: detailId, order_id: orderId },
+  });
+  if (!detail) throw new AppError("Detalle no encontrado", 404);
+
+  if (data.quantity !== undefined) {
+    const quantity = Number(data.quantity);
+    if (!Number.isInteger(quantity) || quantity < 0) {
+      throw new AppError("La cantidad debe ser un entero válido");
+    }
+    if (quantity === 0) {
+      await detail.destroy();
+      const remaining = await OrderDetail.findAll({
+        where: { order_id: orderId },
+      });
+      order.total = remaining.reduce(
+        (sum, d) => sum + Number(d.unit_price) * Number(d.quantity),
+        0
+      );
+      await order.save();
+      return loadOrder(orderId);
+    }
+    detail.quantity = quantity;
+  }
+
+  if (data.observation !== undefined) {
+    detail.observation = data.observation.trim() || null;
+  }
+
+  await detail.save();
+
+  const details = await OrderDetail.findAll({ where: { order_id: orderId } });
+  order.total = details.reduce(
+    (sum, d) => sum + Number(d.unit_price) * Number(d.quantity),
+    0
+  );
+  await order.save();
+  return loadOrder(orderId);
+};
+
 export const validateStockController = async (orderId: number) => {
   const order = await Order.findByPk(orderId);
   if (!order) throw new AppError("Pedido no encontrado", 404);

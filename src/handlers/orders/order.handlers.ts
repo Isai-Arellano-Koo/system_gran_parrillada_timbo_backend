@@ -3,6 +3,7 @@ import {
   openOrderController,
   addOrderDetailController,
   removeOrderDetailController,
+  updateOrderDetailController,
   validateStockController,
   confirmOrderController,
   cancelOrderController,
@@ -64,6 +65,15 @@ export const removeOrderDetailHandler = (req: Request, res: Response) =>
     removeOrderDetailController(
       Number(req.params.orderId),
       Number(req.params.detailId)
+    )
+  );
+
+export const updateOrderDetailHandler = (req: Request, res: Response) =>
+  handle(res, () =>
+    updateOrderDetailController(
+      Number(req.params.orderId),
+      Number(req.params.detailId),
+      req.body
     )
   );
 
