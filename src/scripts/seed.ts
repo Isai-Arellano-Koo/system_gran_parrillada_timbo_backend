@@ -1,5 +1,14 @@
 import { hashPassword } from "../helpers/password";
-import { User, Table, Category, Dish, Ingredient, RecipeItem } from "../models";
+import {
+  User,
+  Table,
+  Category,
+  Dish,
+  Ingredient,
+  RecipeItem,
+  InventoryMovement,
+} from "../models";
+import { Op } from "sequelize";
 import { sequelize } from "../config/database";
 import "../models";
 import { CARTA_CATEGORIES, CARTA_DISHES } from "./cartaTimboSet2026";
@@ -132,22 +141,72 @@ const run = async () => {
     );
 
     const ingredientByName = new Map<string, Ingredient>();
+    const keepIngredientNames = new Set(CARTA_INGREDIENTS.map((item) => item.name));
     for (const item of CARTA_INGREDIENTS) {
+      const minimum =
+        item.unit === "unidad" ? 12 : item.unit === "kg" || item.unit === "lt" ? 2 : 400;
       const [ingredient] = await Ingredient.findOrCreate({
         where: { name: item.name },
         defaults: {
           name: item.name,
           unit: item.unit,
-          stock_minimum: 0,
+          stock_current: 0,
+          stock_minimum: minimum,
           is_active: true,
         },
       });
       ingredient.unit = item.unit;
+      ingredient.stock_minimum = minimum;
       ingredient.is_active = true;
       await ingredient.save();
       ingredientByName.set(item.name, ingredient);
     }
-    console.log(`${ingredientByName.size} ingredientes de receta.`);
+
+    const extras = await Ingredient.findAll({
+      where: { name: { [Op.notIn]: [...keepIngredientNames] } },
+    });
+    const extraIds = extras.map((item) => item.id);
+    if (extraIds.length) {
+      await RecipeItem.destroy({ where: { ingredient_id: extraIds } });
+      await InventoryMovement.destroy({ where: { ingredient_id: extraIds } });
+      await Ingredient.destroy({ where: { id: extraIds } });
+    }
+
+    const admin = await User.findOne({ where: { username: "admin" } });
+    if (!admin) {
+      throw new Error("Falta el usuario administrador para registrar el inventario");
+    }
+
+    const STOCK_REASON = "compra en el mercado";
+    let stockEntries = 0;
+    for (const item of CARTA_INGREDIENTS) {
+      const ingredient = ingredientByName.get(item.name);
+      if (!ingredient) continue;
+      const already = await InventoryMovement.findOne({
+        where: {
+          ingredient_id: ingredient.id,
+          type: "entrada",
+          reason: STOCK_REASON,
+        },
+      });
+      if (already) continue;
+
+      const quantity = Number(item.stock);
+      ingredient.stock_current = Number(ingredient.stock_current) + quantity;
+      await ingredient.save();
+      await InventoryMovement.create({
+        ingredient_id: ingredient.id,
+        type: "entrada",
+        quantity,
+        reason: STOCK_REASON,
+        user_id: admin.id,
+        order_id: null,
+      });
+      stockEntries += 1;
+    }
+    console.log(
+      `${ingredientByName.size} ingredientes del recetario, ${stockEntries} entradas de inventario, ${extraIds.length} ingredientes viejos eliminados.`
+    );
 
     let recipesSet = 0;
     for (const recipe of CARTA_RECIPES) {
