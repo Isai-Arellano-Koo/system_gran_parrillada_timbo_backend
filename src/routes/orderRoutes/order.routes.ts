@@ -8,6 +8,8 @@ import {
   confirmOrderHandler,
   cancelOrderHandler,
   closeOrderHandler,
+  sendAdditionsHandler,
+  setOrderPaidHandler,
   listOrdersHandler,
   getOrderHandler,
   listTablesHandler,

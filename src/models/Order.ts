@@ -20,6 +20,9 @@ export class Order extends Model<
   declare status: CreationOptional<OrderStatus>;
   declare total: CreationOptional<number>;
   declare cancel_reason: CreationOptional<string | null>;
+  declare paid: CreationOptional<boolean>;
+  declare amount_paid: CreationOptional<number>;
+  declare paid_at: CreationOptional<Date | null>;
   declare confirmed_at: CreationOptional<Date | null>;
   declare closed_at: CreationOptional<Date | null>;
   declare cancelled_at: CreationOptional<Date | null>;
@@ -59,6 +62,20 @@ Order.init(
     },
     cancel_reason: {
       type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    paid: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    amount_paid: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false,
+      defaultValue: 0,
+    },
+    paid_at: {
+      type: DataTypes.DATE,
       allowNull: true,
     },
     confirmed_at: {

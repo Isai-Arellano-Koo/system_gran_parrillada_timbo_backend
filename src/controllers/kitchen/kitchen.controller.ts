@@ -20,6 +20,8 @@ export const listKitchenTicketsController = async () => {
           {
             model: OrderDetail,
             as: "details",
+            where: { sent_to_kitchen: true },
+            required: false,
             include: [{ model: Dish, as: "dish" }],
           },
         ],
@@ -61,6 +63,8 @@ export const updateKitchenStatusController = async (
           {
             model: OrderDetail,
             as: "details",
+            where: { sent_to_kitchen: true },
+            required: false,
             include: [{ model: Dish, as: "dish" }],
           },
         ],

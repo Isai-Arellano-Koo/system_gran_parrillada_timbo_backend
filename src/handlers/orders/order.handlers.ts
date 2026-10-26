@@ -8,6 +8,8 @@ import {
   confirmOrderController,
   cancelOrderController,
   closeOrderController,
+  sendAdditionsController,
+  setOrderPaidController,
   listOrdersController,
   getOrderController,
   listTablesController,

@@ -64,6 +64,26 @@ export const connectDatabase = async () => {
   await sequelize.query(
     `ALTER TABLE orders ADD COLUMN IF NOT EXISTS closed_at TIMESTAMP WITH TIME ZONE`
   );
+  await sequelize.query(
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS paid BOOLEAN NOT NULL DEFAULT false`
+  );
+  await sequelize.query(
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS paid_at TIMESTAMP WITH TIME ZONE`
+  );
+  await sequelize.query(
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS amount_paid DECIMAL(10, 2) NOT NULL DEFAULT 0`
+  );
+  await sequelize.query(
+    `ALTER TABLE order_details ADD COLUMN IF NOT EXISTS sent_to_kitchen BOOLEAN NOT NULL DEFAULT false`
+  );
+  await sequelize.query(`
+    UPDATE order_details d
+    SET sent_to_kitchen = true
+    FROM orders o
+    WHERE d.order_id = o.id
+      AND d.sent_to_kitchen = false
+      AND o.status IN ('confirmado', 'cerrado', 'cancelado')
+  `);
 
   await sequelize.query(
     `ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT true`

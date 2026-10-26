@@ -10,7 +10,7 @@ import {
   Table,
   User,
 } from "../../models";
-import { Op } from "sequelize";
+import { Op, type Transaction } from "sequelize";
 import { sequelize } from "../../config/database";
 import { AppError } from "../../middlewares/errorHandler";
 import type { KitchenStatus } from "../../types/enums";
@@ -51,9 +51,32 @@ const loadOrder = async (orderId: number) => {
 };
 
 // Suma cuánto ingrediente pide cada plato del pedido
-const calcRequiredStock = async (orderId: number) => {
+const assertCanEditItems = (order: Order) => {
+  if (order.status !== "en_edicion" && order.status !== "confirmado") {
+    throw new AppError("Este pedido ya no se puede modificar");
+  }
+};
+
+const dueAmount = (order: Order) =>
+  Math.max(0, Number(order.total) - Number(order.amount_paid || 0));
+
+const syncPaidFlag = (order: Order) => {
+  const settled = dueAmount(order) <= 0.009;
+  order.paid = settled;
+  if (!settled) {
+    order.paid_at = null;
+  }
+};
+
+const calcRequiredStock = async (
+  orderId: number,
+  options: { unsentOnly?: boolean } = {}
+) => {
   const details = await OrderDetail.findAll({
-    where: { order_id: orderId },
+    where: {
+      order_id: orderId,
+      ...(options.unsentOnly ? { sent_to_kitchen: false } : {}),
+    },
     include: [
       {
         model: Dish,
@@ -108,6 +131,56 @@ const calcRequiredStock = async (orderId: number) => {
   }
 
   return { details, required };
+};
+
+const consumeRequired = async (
+  order: Order,
+  required: Map<
+    number,
+    { ingredient: Ingredient; needed: number; dishes: string[] }
+  >,
+  t: Transaction
+) => {
+  for (const [, item] of required) {
+    const ingredient = await Ingredient.findByPk(item.ingredient.id, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    if (!ingredient) {
+      throw new AppError(`Ingrediente ${item.ingredient.id} no encontrado`);
+    }
+    const available = Number(ingredient.stock_current);
+    if (available < item.needed) {
+      throw new AppError(
+        `Stock insuficiente de ${ingredient.name}. Afecta: ${item.dishes.join(", ")}`
+      );
+    }
+  }
+
+  for (const [, item] of required) {
+    const ingredient = await Ingredient.findByPk(item.ingredient.id, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    if (!ingredient) continue;
+    const nextStock = Number(ingredient.stock_current) - item.needed;
+    if (nextStock < 0) {
+      throw new AppError(`El stock de ${ingredient.name} no puede quedar negativo`);
+    }
+    ingredient.stock_current = nextStock;
+    await ingredient.save({ transaction: t });
+    await InventoryMovement.create(
+      {
+        ingredient_id: ingredient.id,
+        type: "salida_venta",
+        quantity: item.needed,
+        reason: `Consumo pedido ${order.code}`,
+        order_id: order.id,
+        user_id: order.waiter_id,
+      },
+      { transaction: t }
+    );
+  }
 };
 
 export const listTablesController = async () => {
@@ -200,9 +273,7 @@ export const addOrderDetailController = async (
 ) => {
   const order = await Order.findByPk(orderId);
   if (!order) throw new AppError("Pedido no encontrado", 404);
-  if (order.status !== "en_edicion") {
-    throw new AppError("Solo se pueden editar pedidos en edición");
-  }
+  assertCanEditItems(order);
 
   const dishId = Number(data.dish_id);
   const quantity = Number(data.quantity);
@@ -225,6 +296,7 @@ export const addOrderDetailController = async (
     quantity,
     unit_price: Number(dish.price),
     observation: data.observation?.trim() || null,
+    sent_to_kitchen: false,
   });
 
   const details = await OrderDetail.findAll({ where: { order_id: orderId } });
@@ -233,6 +305,7 @@ export const addOrderDetailController = async (
     (sum, d) => sum + Number(d.unit_price) * Number(d.quantity),
     0
   );
+  syncPaidFlag(order);
   await order.save();
 
   return loadOrder(orderId);
@@ -244,14 +317,15 @@ export const removeOrderDetailController = async (
 ) => {
   const order = await Order.findByPk(orderId);
   if (!order) throw new AppError("Pedido no encontrado", 404);
-  if (order.status !== "en_edicion") {
-    throw new AppError("Solo se pueden editar pedidos en edición");
-  }
+  assertCanEditItems(order);
 
   const detail = await OrderDetail.findOne({
     where: { id: detailId, order_id: orderId },
   });
   if (!detail) throw new AppError("Detalle no encontrado", 404);
+  if (order.status === "confirmado" && detail.sent_to_kitchen) {
+    throw new AppError("Ese plato ya fue enviado a cocina");
+  }
   await detail.destroy();
 
   const details = await OrderDetail.findAll({ where: { order_id: orderId } });
@@ -259,6 +333,7 @@ export const removeOrderDetailController = async (
     (sum, d) => sum + Number(d.unit_price) * Number(d.quantity),
     0
   );
+  syncPaidFlag(order);
   await order.save();
 
   return loadOrder(orderId);
@@ -271,14 +346,19 @@ export const updateOrderDetailController = async (
 ) => {
   const order = await Order.findByPk(orderId);
   if (!order) throw new AppError("Pedido no encontrado", 404);
-  if (order.status !== "en_edicion") {
-    throw new AppError("Solo se pueden editar pedidos en edición");
-  }
+  assertCanEditItems(order);
 
   const detail = await OrderDetail.findOne({
     where: { id: detailId, order_id: orderId },
   });
   if (!detail) throw new AppError("Detalle no encontrado", 404);
+  if (
+    order.status === "confirmado" &&
+    detail.sent_to_kitchen &&
+    data.quantity !== undefined
+  ) {
+    throw new AppError("Ese plato ya fue enviado a cocina");
+  }
 
   if (data.quantity !== undefined) {
     const quantity = Number(data.quantity);
@@ -294,6 +374,7 @@ export const updateOrderDetailController = async (
         (sum, d) => sum + Number(d.unit_price) * Number(d.quantity),
         0
       );
+      syncPaidFlag(order);
       await order.save();
       return loadOrder(orderId);
     }
@@ -311,6 +392,7 @@ export const updateOrderDetailController = async (
     (sum, d) => sum + Number(d.unit_price) * Number(d.quantity),
     0
   );
+  syncPaidFlag(order);
   await order.save();
   return loadOrder(orderId);
 };
@@ -318,11 +400,13 @@ export const updateOrderDetailController = async (
 export const validateStockController = async (orderId: number) => {
   const order = await Order.findByPk(orderId);
   if (!order) throw new AppError("Pedido no encontrado", 404);
-  if (order.status !== "en_edicion") {
-    throw new AppError("El pedido no está en edición");
+  if (order.status !== "en_edicion" && order.status !== "confirmado") {
+    throw new AppError("El pedido no admite validación de stock");
   }
 
-  const { details, required } = await calcRequiredStock(orderId);
+  const { details, required } = await calcRequiredStock(orderId, {
+    unsentOnly: order.status === "confirmado",
+  });
   if (details.length === 0) {
     throw new AppError("El pedido debe contener al menos un plato");
   }
@@ -375,23 +459,7 @@ export const confirmOrderController = async (orderId: number) => {
     }
 
     const { required } = await calcRequiredStock(orderId);
-
-    // Primero revisa stock. Si falta algo, no confirma
-    for (const [, item] of required) {
-      const ingredient = await Ingredient.findByPk(item.ingredient.id, {
-        transaction: t,
-        lock: t.LOCK.UPDATE,
-      });
-      if (!ingredient) {
-        throw new AppError(`Ingrediente ${item.ingredient.id} no encontrado`);
-      }
-      const available = Number(ingredient.stock_current);
-      if (available < item.needed) {
-        throw new AppError(
-          `Stock insuficiente de ${ingredient.name}. Afecta: ${item.dishes.join(", ")}`
-        );
-      }
-    }
+    await consumeRequired(order, required, t);
 
     const expectedTotal = details.reduce(
       (sum, d) => sum + Number(d.unit_price) * Number(d.quantity),
@@ -400,6 +468,9 @@ export const confirmOrderController = async (orderId: number) => {
     order.total = expectedTotal;
     order.status = "confirmado";
     order.confirmed_at = new Date();
+    order.amount_paid = 0;
+    order.paid = false;
+    order.paid_at = null;
     await order.save({ transaction: t });
 
     const existingTicket = await KitchenTicket.findOne({
@@ -410,7 +481,6 @@ export const confirmOrderController = async (orderId: number) => {
       throw new AppError("El pedido ya tiene una comanda");
     }
 
-    // Cocina recibe la comanda en pendiente
     await KitchenTicket.create(
       {
         order_id: orderId,
@@ -420,36 +490,81 @@ export const confirmOrderController = async (orderId: number) => {
       { transaction: t }
     );
 
-    // Descuenta ingredientes y deja el movimiento de salida
-    for (const [, item] of required) {
-      const ingredient = await Ingredient.findByPk(item.ingredient.id, {
-        transaction: t,
-        lock: t.LOCK.UPDATE,
-      });
-      if (!ingredient) continue;
-
-      const nextStock = Number(ingredient.stock_current) - item.needed;
-      if (nextStock < 0) {
-        throw new AppError(`El stock de ${ingredient.name} no puede quedar negativo`);
-      }
-      ingredient.stock_current = nextStock;
-      await ingredient.save({ transaction: t });
-
-      await InventoryMovement.create(
-        {
-          ingredient_id: ingredient.id,
-          type: "salida_venta",
-          quantity: item.needed,
-          reason: `Consumo pedido ${order.code}`,
-          order_id: order.id,
-          user_id: order.waiter_id,
-        },
-        { transaction: t }
-      );
+    for (const detail of details) {
+      detail.sent_to_kitchen = true;
+      await detail.save({ transaction: t });
     }
 
     return loadOrder(orderId);
   });
+};
+
+export const sendAdditionsController = async (orderId: number) => {
+  return sequelize.transaction(async (t) => {
+    const order = await Order.findByPk(orderId, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    if (!order) throw new AppError("Pedido no encontrado", 404);
+    if (order.status !== "confirmado") {
+      throw new AppError("Solo se envían adicionales de un pedido en mesa");
+    }
+
+    const pending = await OrderDetail.findAll({
+      where: { order_id: orderId, sent_to_kitchen: false },
+      transaction: t,
+    });
+    if (!pending.length) {
+      throw new AppError("No hay platos nuevos para enviar a cocina");
+    }
+
+    const { required } = await calcRequiredStock(orderId, { unsentOnly: true });
+    await consumeRequired(order, required, t);
+
+    for (const detail of pending) {
+      detail.sent_to_kitchen = true;
+      await detail.save({ transaction: t });
+    }
+
+    const ticket = await KitchenTicket.findOne({
+      where: { order_id: orderId },
+      transaction: t,
+    });
+    if (ticket) {
+      ticket.status = "pendiente";
+      ticket.status_changed_at = new Date();
+      await ticket.save({ transaction: t });
+    }
+
+    syncPaidFlag(order);
+    await order.save({ transaction: t });
+    return loadOrder(orderId);
+  });
+};
+
+export const setOrderPaidController = async (orderId: number, paid: boolean) => {
+  const order = await Order.findByPk(orderId);
+  if (!order) throw new AppError("Pedido no encontrado", 404);
+  if (order.status !== "confirmado") {
+    throw new AppError("Solo se registra el pago de una mesa ocupada");
+  }
+  const pending = await OrderDetail.count({
+    where: { order_id: orderId, sent_to_kitchen: false },
+  });
+  if (paid && pending > 0) {
+    throw new AppError("Envía los platos nuevos a cocina antes de cobrar");
+  }
+  if (paid) {
+    order.amount_paid = Number(order.total);
+    order.paid = true;
+    order.paid_at = new Date();
+  } else {
+    order.amount_paid = 0;
+    order.paid = false;
+    order.paid_at = null;
+  }
+  await order.save();
+  return loadOrder(orderId);
 };
 
 export const cancelOrderController = async (
@@ -541,6 +656,15 @@ export const closeOrderController = async (orderId: number) => {
   if (!order) throw new AppError("Pedido no encontrado", 404);
   if (order.status !== "confirmado") {
     throw new AppError("Solo se libera una mesa con pedido confirmado");
+  }
+  const pending = await OrderDetail.count({
+    where: { order_id: orderId, sent_to_kitchen: false },
+  });
+  if (pending > 0) {
+    throw new AppError("Hay platos nuevos sin enviar a cocina");
+  }
+  if (dueAmount(order) > 0.009) {
+    throw new AppError("La mesa tiene un saldo pendiente");
   }
   order.status = "cerrado";
   order.closed_at = new Date();

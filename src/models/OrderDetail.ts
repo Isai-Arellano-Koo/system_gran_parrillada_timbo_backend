@@ -18,6 +18,7 @@ export class OrderDetail extends Model<
   declare quantity: number;
   declare unit_price: number;
   declare observation: CreationOptional<string | null>;
+  declare sent_to_kitchen: CreationOptional<boolean>;
   declare created_at: CreationOptional<Date>;
   declare updated_at: CreationOptional<Date>;
 }
