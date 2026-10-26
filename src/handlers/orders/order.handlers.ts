@@ -89,6 +89,14 @@ export const confirmOrderHandler = (req: Request, res: Response) =>
 export const closeOrderHandler = (req: Request, res: Response) =>
   handle(res, () => closeOrderController(Number(req.params.orderId)));
 
+export const sendAdditionsHandler = (req: Request, res: Response) =>
+  handle(res, () => sendAdditionsController(Number(req.params.orderId)));
+
+export const setOrderPaidHandler = (req: Request, res: Response) =>
+  handle(res, () =>
+    setOrderPaidController(Number(req.params.orderId), Boolean(req.body?.paid))
+  );
+
 export const cancelOrderHandler = (req: Request, res: Response) =>
   handle(res, () =>
     cancelOrderController(

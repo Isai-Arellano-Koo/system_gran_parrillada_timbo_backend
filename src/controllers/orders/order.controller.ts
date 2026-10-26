@@ -120,9 +120,7 @@ const calcRequiredStock = async (
       | undefined;
     const recipeItems = dish?.recipe_items || [];
     if (!dish || recipeItems.length === 0) {
-      throw new AppError(
-        `El plato "${dish?.name || detail.dish_id}" no tiene receta asociada`
-      );
+      continue;
     }
 
     for (const item of recipeItems) {
@@ -562,12 +560,6 @@ export const setOrderPaidController = async (orderId: number, paid: boolean) => 
   if (!order) throw new AppError("Pedido no encontrado", 404);
   if (order.status !== "confirmado") {
     throw new AppError("Solo se registra el pago de una mesa ocupada");
-  }
-  const pending = await OrderDetail.count({
-    where: { order_id: orderId, sent_to_kitchen: false },
-  });
-  if (paid && pending > 0) {
-    throw new AppError("Envía los platos nuevos a cocina antes de cobrar");
   }
   if (paid) {
     order.amount_paid = Number(order.total);

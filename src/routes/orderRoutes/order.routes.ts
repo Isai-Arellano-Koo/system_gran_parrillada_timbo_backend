@@ -58,6 +58,16 @@ router.post(
   confirmOrderHandler
 );
 router.post(
+  "/:orderId/additions",
+  requireRoles("mesero", "admin"),
+  sendAdditionsHandler
+);
+router.patch(
+  "/:orderId/paid",
+  requireRoles("mesero", "admin", "cajero"),
+  setOrderPaidHandler
+);
+router.post(
   "/:orderId/close",
   requireRoles("mesero", "admin"),
   closeOrderHandler
