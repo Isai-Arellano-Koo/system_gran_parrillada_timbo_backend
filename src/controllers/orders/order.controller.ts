@@ -21,15 +21,30 @@ type DetailInput = {
   observation?: string;
 };
 
-// Código único del pedido: fecha + 3 dígitos al azar
-const generateOrderCode = () => {
-  const now = new Date();
-  const stamp = now
-    .toISOString()
-    .replace(/[-:TZ.]/g, "")
-    .slice(0, 14);
-  const rand = Math.floor(Math.random() * 900 + 100);
-  return `ORD-${stamp}-${rand}`;
+const limaDayMonth = () => {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "America/Lima",
+    day: "2-digit",
+    month: "2-digit",
+  }).formatToParts(new Date());
+  const day = parts.find((part) => part.type === "day")?.value || "00";
+  const month = parts.find((part) => part.type === "month")?.value || "00";
+  return `${day}${month}`;
+};
+
+// Mesa + día/mes + correlativo del día. Ej: M01-2610-03
+const generateOrderCode = async (tableNumber: number) => {
+  const mesa = String(tableNumber).padStart(2, "0");
+  const prefix = `M${mesa}-${limaDayMonth()}-`;
+  const count = await Order.count({
+    where: { code: { [Op.like]: `${prefix}%` } },
+  });
+  for (let step = 1; step <= 20; step++) {
+    const code = `${prefix}${String(count + step).padStart(2, "0")}`;
+    const taken = await Order.findOne({ where: { code } });
+    if (!taken) return code;
+  }
+  return `${prefix}${Math.floor(Math.random() * 90 + 10)}`;
 };
 
 // Trae el pedido con mesa, mesero, platos y comanda
@@ -237,7 +252,7 @@ export const openOrderController = async (tableId: number, waiterId: number) => 
   }
 
   const order = await Order.create({
-    code: generateOrderCode(),
+    code: await generateOrderCode(table.number),
     table_id: tableId,
     waiter_id: waiterId,
     status: "en_edicion",
