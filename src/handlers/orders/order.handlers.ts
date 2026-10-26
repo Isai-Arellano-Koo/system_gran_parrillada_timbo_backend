@@ -7,6 +7,7 @@ import {
   validateStockController,
   confirmOrderController,
   cancelOrderController,
+  closeOrderController,
   listOrdersController,
   getOrderController,
   listTablesController,
@@ -82,6 +83,9 @@ export const validateStockHandler = (req: Request, res: Response) =>
 
 export const confirmOrderHandler = (req: Request, res: Response) =>
   handle(res, () => confirmOrderController(Number(req.params.orderId)));
+
+export const closeOrderHandler = (req: Request, res: Response) =>
+  handle(res, () => closeOrderController(Number(req.params.orderId)));
 
 export const cancelOrderHandler = (req: Request, res: Response) =>
   handle(res, () =>

@@ -25,36 +25,45 @@ export const sequelize = new Sequelize(
   }
 );
 
-const ensureUserRoleValues = async () => {
+const ensureEnumValue = async (
+  table: string,
+  column: string,
+  value: string
+) => {
   const rows = await sequelize.query<{ typname: string }>(
     `SELECT t.typname AS typname
      FROM pg_type t
      JOIN pg_attribute a ON a.atttypid = t.oid
      JOIN pg_class c ON c.oid = a.attrelid
      JOIN pg_namespace n ON n.oid = c.relnamespace
-     WHERE c.relname = 'users'
-       AND a.attname = 'role'
+     WHERE c.relname = :table
+       AND a.attname = :column
        AND t.typtype = 'e'
        AND n.nspname = 'public'`,
-    { type: QueryTypes.SELECT }
+    { replacements: { table, column }, type: QueryTypes.SELECT }
   );
   const typname = rows[0]?.typname;
   if (!typname || !/^[a-zA-Z0-9_]+$/.test(typname)) return;
   await sequelize.query(
-    `ALTER TYPE "${typname}" ADD VALUE IF NOT EXISTS 'cajero'`
+    `ALTER TYPE "${typname}" ADD VALUE IF NOT EXISTS '${value}'`
   );
 };
 
 export const connectDatabase = async () => {
   await sequelize.authenticate();
   console.log("Conexión a PostgreSQL establecida correctamente.");
-  await ensureUserRoleValues();
 
   if (env.db.sync) {
     // Crea tablas que falten. No usamos alter:true porque duplicaba índices
     await sequelize.sync();
     console.log("Modelos sincronizados con la base de datos.");
   }
+
+  await ensureEnumValue("users", "role", "cajero");
+  await ensureEnumValue("orders", "status", "cerrado");
+  await sequelize.query(
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS closed_at TIMESTAMP WITH TIME ZONE`
+  );
 
   await sequelize.query(
     `ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT true`

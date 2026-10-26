@@ -7,6 +7,7 @@ import {
   validateStockHandler,
   confirmOrderHandler,
   cancelOrderHandler,
+  closeOrderHandler,
   listOrdersHandler,
   getOrderHandler,
   listTablesHandler,
@@ -53,6 +54,11 @@ router.post(
   "/:orderId/confirm",
   requireRoles("mesero", "admin"),
   confirmOrderHandler
+);
+router.post(
+  "/:orderId/close",
+  requireRoles("mesero", "admin"),
+  closeOrderHandler
 );
 router.post(
   "/:orderId/cancel",

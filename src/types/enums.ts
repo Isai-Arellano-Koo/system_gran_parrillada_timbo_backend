@@ -8,6 +8,7 @@ export type MeasurementUnit = (typeof MEASUREMENT_UNITS)[number];
 export const ORDER_STATUSES = [
   "en_edicion",
   "confirmado",
+  "cerrado",
   "cancelado",
 ] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];

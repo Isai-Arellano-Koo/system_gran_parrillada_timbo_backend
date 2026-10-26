@@ -10,6 +10,7 @@ import {
   Table,
   User,
 } from "../../models";
+import { Op } from "sequelize";
 import { sequelize } from "../../config/database";
 import { AppError } from "../../middlewares/errorHandler";
 import type { KitchenStatus } from "../../types/enums";
@@ -151,12 +152,15 @@ export const openOrderController = async (tableId: number, waiterId: number) => 
     throw new AppError("Mesa no válida", 404);
   }
 
-  // Una mesa no puede tener dos pedidos abiertos
+  // Sigue ocupada mientras comen, aunque el pedido ya haya ido a cocina
   const open = await Order.findOne({
-    where: { table_id: tableId, status: "en_edicion" },
+    where: {
+      table_id: tableId,
+      status: { [Op.in]: ["en_edicion", "confirmado"] },
+    },
   });
   if (open) {
-    throw new AppError("La mesa ya tiene un pedido en edición");
+    throw new AppError("La mesa sigue ocupada");
   }
 
   const order = await Order.create({
@@ -466,6 +470,9 @@ export const cancelOrderController = async (
     if (order.status === "cancelado") {
       throw new AppError("El pedido ya está cancelado");
     }
+    if (order.status === "cerrado") {
+      throw new AppError("El pedido ya está cerrado y la mesa fue liberada");
+    }
 
     const ticket = order.get("kitchen_ticket") as KitchenTicket | undefined;
 
@@ -527,4 +534,16 @@ export const cancelOrderController = async (
 
     return loadOrder(orderId);
   });
+};
+
+export const closeOrderController = async (orderId: number) => {
+  const order = await Order.findByPk(orderId);
+  if (!order) throw new AppError("Pedido no encontrado", 404);
+  if (order.status !== "confirmado") {
+    throw new AppError("Solo se libera una mesa con pedido confirmado");
+  }
+  order.status = "cerrado";
+  order.closed_at = new Date();
+  await order.save();
+  return loadOrder(orderId);
 };

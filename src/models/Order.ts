@@ -21,6 +21,7 @@ export class Order extends Model<
   declare total: CreationOptional<number>;
   declare cancel_reason: CreationOptional<string | null>;
   declare confirmed_at: CreationOptional<Date | null>;
+  declare closed_at: CreationOptional<Date | null>;
   declare cancelled_at: CreationOptional<Date | null>;
   declare created_at: CreationOptional<Date>;
   declare updated_at: CreationOptional<Date>;
@@ -47,7 +48,7 @@ Order.init(
       allowNull: false,
     },
     status: {
-      type: DataTypes.ENUM("en_edicion", "confirmado", "cancelado"),
+      type: DataTypes.ENUM("en_edicion", "confirmado", "cerrado", "cancelado"),
       allowNull: false,
       defaultValue: "en_edicion",
     },
@@ -61,6 +62,10 @@ Order.init(
       allowNull: true,
     },
     confirmed_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    closed_at: {
       type: DataTypes.DATE,
       allowNull: true,
     },
