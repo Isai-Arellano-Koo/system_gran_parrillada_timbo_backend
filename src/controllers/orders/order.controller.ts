@@ -67,9 +67,8 @@ const loadOrder = async (orderId: number) => {
 
 // Suma cuánto ingrediente pide cada plato del pedido
 const assertCanEditItems = (order: Order) => {
-  if (order.status !== "en_edicion" && order.status !== "confirmado") {
-    throw new AppError("Este pedido ya no se puede modificar");
-  }
+  if (order.status === "en_edicion" || order.status === "confirmado") return;
+  throw new AppError("Este pedido ya no se puede modificar");
 };
 
 const dueAmount = (order: Order) =>

@@ -50,6 +50,11 @@ OrderDetail.init(
       type: DataTypes.STRING(500),
       allowNull: true,
     },
+    sent_to_kitchen: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
     created_at: DataTypes.DATE,
     updated_at: DataTypes.DATE,
   },
