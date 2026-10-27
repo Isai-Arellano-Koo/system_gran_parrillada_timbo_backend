@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   listKitchenTicketsHandler,
   updateKitchenStatusHandler,
+  updateKitchenDishHandler,
 } from "../../handlers/kitchen/kitchen.handlers";
 import { authMiddleware } from "../../middlewares/authMiddleware";
 import { requireRoles } from "../../middlewares/roleMiddleware";
@@ -16,8 +17,13 @@ router.get(
   listKitchenTicketsHandler
 );
 router.patch(
+  "/details/:detailId/status",
+  requireRoles("cocinero", "admin", "mesero"),
+  updateKitchenDishHandler
+);
+router.patch(
   "/:ticketId/status",
-  requireRoles("cocinero", "admin"), // el mesero ve, pero no cambia el estado
+  requireRoles("cocinero", "admin"),
   updateKitchenStatusHandler
 );
 

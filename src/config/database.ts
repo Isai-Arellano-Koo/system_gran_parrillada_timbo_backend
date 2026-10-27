@@ -76,6 +76,9 @@ export const connectDatabase = async () => {
   await sequelize.query(
     `ALTER TABLE order_details ADD COLUMN IF NOT EXISTS sent_to_kitchen BOOLEAN NOT NULL DEFAULT false`
   );
+  await sequelize.query(
+    `ALTER TABLE order_details ADD COLUMN IF NOT EXISTS kitchen_status VARCHAR(32) NOT NULL DEFAULT 'pendiente'`
+  );
   await sequelize.query(`
     UPDATE order_details d
     SET sent_to_kitchen = true

@@ -504,6 +504,7 @@ export const confirmOrderController = async (orderId: number) => {
 
     for (const detail of details) {
       detail.sent_to_kitchen = true;
+      detail.kitchen_status = "pendiente";
       await detail.save({ transaction: t });
     }
 
@@ -535,6 +536,7 @@ export const sendAdditionsController = async (orderId: number) => {
 
     for (const detail of pending) {
       detail.sent_to_kitchen = true;
+      detail.kitchen_status = "pendiente";
       await detail.save({ transaction: t });
     }
 

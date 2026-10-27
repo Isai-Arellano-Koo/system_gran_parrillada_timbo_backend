@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import {
   listKitchenTicketsController,
   updateKitchenStatusController,
+  updateKitchenDishController,
 } from "../../controllers/kitchen/kitchen.controller";
 import { AppError } from "../../middlewares/errorHandler";
 import type { KitchenStatus } from "../../types/enums";
@@ -33,6 +34,15 @@ export const updateKitchenStatusHandler = (req: Request, res: Response) =>
   handle(res, () =>
     updateKitchenStatusController(
       Number(req.params.ticketId),
+      req.body.status as KitchenStatus,
+      req.user!.id
+    )
+  );
+
+export const updateKitchenDishHandler = (req: Request, res: Response) =>
+  handle(res, () =>
+    updateKitchenDishController(
+      Number(req.params.detailId),
       req.body.status as KitchenStatus,
       req.user!.id
     )
