@@ -3,9 +3,13 @@ import {
   openOrderHandler,
   addOrderDetailHandler,
   removeOrderDetailHandler,
+  updateOrderDetailHandler,
   validateStockHandler,
   confirmOrderHandler,
   cancelOrderHandler,
+  closeOrderHandler,
+  sendAdditionsHandler,
+  setOrderPaidHandler,
   listOrdersHandler,
   getOrderHandler,
   listTablesHandler,
@@ -16,7 +20,7 @@ import { requireRoles } from "../../middlewares/roleMiddleware";
 
 const router = Router();
 
-router.use(authMiddleware);
+router.use(authMiddleware); // pedidos solo con sesión
 
 router.get("/tables", listTablesHandler);
 router.post("/tables/seed", requireRoles("admin"), seedTablesHandler);
@@ -33,6 +37,11 @@ router.post(
   requireRoles("mesero", "admin"),
   addOrderDetailHandler
 );
+router.patch(
+  "/:orderId/details/:detailId",
+  requireRoles("mesero", "admin"),
+  updateOrderDetailHandler
+);
 router.delete(
   "/:orderId/details/:detailId",
   requireRoles("mesero", "admin"),
@@ -47,6 +56,21 @@ router.post(
   "/:orderId/confirm",
   requireRoles("mesero", "admin"),
   confirmOrderHandler
+);
+router.post(
+  "/:orderId/additions",
+  requireRoles("mesero", "admin"),
+  sendAdditionsHandler
+);
+router.patch(
+  "/:orderId/paid",
+  requireRoles("mesero", "admin", "cajero"),
+  setOrderPaidHandler
+);
+router.post(
+  "/:orderId/close",
+  requireRoles("mesero", "admin"),
+  closeOrderHandler
 );
 router.post(
   "/:orderId/cancel",

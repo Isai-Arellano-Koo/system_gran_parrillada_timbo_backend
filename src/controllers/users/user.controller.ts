@@ -1,14 +1,17 @@
 import { createHash, randomInt, timingSafeEqual } from "crypto";
 import { Op } from "sequelize";
-import { EmailVerification, User } from "../../models";
+import { EmailVerification, User, UserStatusChange } from "../../models";
 import { hashPassword } from "../../helpers/password";
-import { sendVerificationEmail } from "../../helpers/mail";
+import {
+  sendPasswordResetEmail,
+  sendVerificationEmail,
+} from "../../helpers/mail";
 import { env } from "../../config/env";
 import { AppError } from "../../middlewares/errorHandler";
 import { USER_ROLES, type UserRole } from "../../types/enums";
 
-const CODE_TTL_MS = 15 * 60 * 1000;
-const RESEND_MS = 60 * 1000;
+const CODE_TTL_MS = 15 * 60 * 1000; // el código dura 15 minutos
+const RESEND_MS = 60 * 1000; // no se puede pedir otro hasta pasar un minuto
 
 const USERNAME_RE = /^[a-z0-9.]+$/;
 
@@ -49,7 +52,10 @@ type UpdateUserInput = {
   password?: string;
   role?: UserRole;
   is_active?: boolean;
+  status_reason?: string;
 };
+
+export type EmailCodePurpose = "confirm-email" | "password-reset";
 
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
 const normalizeUsername = (username: string) => username.trim().toLowerCase();
@@ -89,7 +95,12 @@ const sameHash = (left: string, right: string) => {
   return a.length === b.length && timingSafeEqual(a, b);
 };
 
-const consumeEmailCode = async (email: string, code: string | undefined) => {
+// Marca el código como usado. Solo sirve una vez
+const consumeEmailCode = async (
+  email: string,
+  code: string | undefined,
+  purpose: EmailCodePurpose
+) => {
   const clean = (code || "").trim();
   if (!/^\d{6}$/.test(clean)) {
     throw new AppError("Ingresa el código de 6 dígitos que enviamos al correo");
@@ -98,6 +109,7 @@ const consumeEmailCode = async (email: string, code: string | undefined) => {
   const row = await EmailVerification.findOne({
     where: {
       email,
+      purpose,
       used_at: null,
       expires_at: { [Op.gt]: new Date() },
     },
@@ -112,14 +124,17 @@ const consumeEmailCode = async (email: string, code: string | undefined) => {
   await row.save();
 };
 
-export const issueEmailCode = async (emailRaw: string) => {
+export const issueEmailCode = async (
+  emailRaw: string,
+  purpose: EmailCodePurpose = "confirm-email"
+) => {
   const email = normalizeEmail(emailRaw);
   if (!email.includes("@") || !email.split("@")[1]?.includes(".")) {
     throw new AppError("El correo electrónico no es válido");
   }
 
   const latest = await EmailVerification.findOne({
-    where: { email },
+    where: { email, purpose },
     order: [["created_at", "DESC"]],
   });
   if (
@@ -132,12 +147,17 @@ export const issueEmailCode = async (emailRaw: string) => {
   const code = String(randomInt(100000, 1000000));
   const row = await EmailVerification.create({
     email,
-    code_hash: hashCode(code),
+    purpose,
+    code_hash: hashCode(code), // guardamos el hash, no el número
     expires_at: new Date(Date.now() + CODE_TTL_MS),
   });
 
   try {
-    await sendVerificationEmail(email, code);
+    if (purpose === "password-reset") {
+      await sendPasswordResetEmail(email, code);
+    } else {
+      await sendVerificationEmail(email, code);
+    }
   } catch (error) {
     await row.destroy();
     throw error;
@@ -145,7 +165,7 @@ export const issueEmailCode = async (emailRaw: string) => {
 
   return {
     message: "Enviamos un código a ese correo. Caduca en 15 minutos.",
-    ...(env.nodeEnv === "test" ? { devCode: code } : {}),
+    ...(env.nodeEnv === "test" ? { devCode: code } : {}), // en pruebas sí devolvemos el código
   };
 };
 
@@ -164,9 +184,9 @@ export const confirmAccountController = async (userId: number, code: string) => 
     return user;
   }
 
-  await consumeEmailCode(user.email, code);
+  await consumeEmailCode(user.email, code, "confirm-email");
   user.email_verified = true;
-  user.is_active = true;
+  user.is_active = true; // recién acá puede entrar al sistema
   await user.save();
   return user;
 };
@@ -222,7 +242,7 @@ export const createUserController = async (data: CreateUserInput) => {
     email,
     password_hash: await hashPassword(password),
     role,
-    is_active: false,
+    is_active: false, // queda pendiente hasta confirmar el correo
     email_verified: false,
   });
 
@@ -268,6 +288,7 @@ export const updateUserController = async (
       },
     });
     if (otherAdmins === 0) {
+      // No dejamos el local sin ningún admin
       throw new AppError("Debe quedar al menos un administrador activo");
     }
   }
@@ -313,9 +334,67 @@ export const updateUserController = async (
     user.password_hash = await hashPassword(data.password);
   }
 
+  const statusChanged = nextActive !== user.is_active;
+  let statusReason = "";
+  if (statusChanged) {
+    statusReason = (data.status_reason || "").trim();
+    if (statusReason.length < 3) {
+      throw new AppError("Indica el motivo del cambio de estado");
+    }
+  }
+
+  const previousActive = user.is_active;
   user.role = nextRole;
   user.is_active = nextActive;
   await user.save();
 
+  if (statusChanged) {
+    // El cambio queda en una tabla aparte, no solo en la pantalla
+    await UserStatusChange.create({
+      user_id: user.id,
+      previous_is_active: previousActive,
+      next_is_active: nextActive,
+      reason: statusReason,
+      changed_by: actorId,
+    });
+  }
+
   return toPublic(user);
+};
+
+const statusChangeIncludes = [
+  {
+    model: User,
+    as: "user" as const,
+    attributes: ["id", "name", "username", "email", "role"],
+  },
+  {
+    model: User,
+    as: "changed_by_user" as const,
+    attributes: ["id", "name", "username", "email"],
+  },
+];
+
+export const listUserStatusChangesController = async (userId: number) => {
+  const user = await User.findByPk(userId, { attributes: ["id"] });
+  if (!user) {
+    throw new AppError("Usuario no encontrado", 404);
+  }
+
+  return UserStatusChange.findAll({
+    where: { user_id: userId },
+    include: statusChangeIncludes,
+    order: [["created_at", "DESC"]],
+  });
+};
+
+export const listAllUserStatusChangesController = async () => {
+  return UserStatusChange.findAll({
+    include: statusChangeIncludes,
+    order: [["created_at", "DESC"]],
+  });
+};
+
+export const consumePasswordResetCode = async (email: string, code: string) => {
+  await consumeEmailCode(email, code, "password-reset");
 };

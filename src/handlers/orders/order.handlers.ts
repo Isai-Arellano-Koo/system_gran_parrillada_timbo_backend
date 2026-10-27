@@ -3,9 +3,13 @@ import {
   openOrderController,
   addOrderDetailController,
   removeOrderDetailController,
+  updateOrderDetailController,
   validateStockController,
   confirmOrderController,
   cancelOrderController,
+  closeOrderController,
+  sendAdditionsController,
+  setOrderPaidController,
   listOrdersController,
   getOrderController,
   listTablesController,
@@ -67,11 +71,31 @@ export const removeOrderDetailHandler = (req: Request, res: Response) =>
     )
   );
 
+export const updateOrderDetailHandler = (req: Request, res: Response) =>
+  handle(res, () =>
+    updateOrderDetailController(
+      Number(req.params.orderId),
+      Number(req.params.detailId),
+      req.body
+    )
+  );
+
 export const validateStockHandler = (req: Request, res: Response) =>
   handle(res, () => validateStockController(Number(req.params.orderId)));
 
 export const confirmOrderHandler = (req: Request, res: Response) =>
   handle(res, () => confirmOrderController(Number(req.params.orderId)));
+
+export const closeOrderHandler = (req: Request, res: Response) =>
+  handle(res, () => closeOrderController(Number(req.params.orderId)));
+
+export const sendAdditionsHandler = (req: Request, res: Response) =>
+  handle(res, () => sendAdditionsController(Number(req.params.orderId)));
+
+export const setOrderPaidHandler = (req: Request, res: Response) =>
+  handle(res, () =>
+    setOrderPaidController(Number(req.params.orderId), Boolean(req.body?.paid))
+  );
 
 export const cancelOrderHandler = (req: Request, res: Response) =>
   handle(res, () =>

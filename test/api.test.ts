@@ -393,12 +393,38 @@ describe("API Gran Parrillada Timbó", () => {
     });
 
     it("CP16 Admin desactiva a otro usuario", async () => {
-      const result = await request("PATCH", `/api/users/${meseroId}`, {
+      const missing = await request("PATCH", `/api/users/${meseroId}`, {
         token: adminToken,
         body: { is_active: false },
       });
+      check(missing.status === 400, `Estado ${missing.status}: ${messageOf(missing)}`);
+      check(messageOf(missing).includes("motivo"), messageOf(missing));
+
+      const result = await request("PATCH", `/api/users/${meseroId}`, {
+        token: adminToken,
+        body: {
+          is_active: false,
+          status_reason: "Prueba de suspensión para el sprint 2",
+        },
+      });
       check(result.status === 200, `Estado ${result.status}: ${messageOf(result)}`);
       check(result.data.is_active === false, "El usuario sigue activo");
+
+      const history = await request("GET", `/api/users/${meseroId}/status-changes`, {
+        token: adminToken,
+      });
+      check(history.status === 200, `Estado ${history.status}: ${messageOf(history)}`);
+      const rows = history.data as unknown as Array<{
+        previous_is_active: boolean;
+        next_is_active: boolean;
+        reason: string;
+        changed_by_user?: { id: number; name: string };
+      }>;
+      check(Array.isArray(rows) && rows.length >= 1, "No se guardó el cambio de estado");
+      check(rows[0].previous_is_active === true, "No quedó el estado anterior");
+      check(rows[0].next_is_active === false, "No quedó el estado nuevo");
+      check(rows[0].reason.includes("Prueba de suspensión"), "No quedó el motivo");
+      check(rows[0].changed_by_user?.id === adminId, "No quedó el administrador");
     });
 
     it("CP17 Crear ingrediente válido", async () => {
@@ -529,5 +555,119 @@ describe("API Gran Parrillada Timbó", () => {
       const alerts = result.data as unknown as unknown[];
       check(Array.isArray(alerts), "La respuesta no es una lista");
       check(alerts.length === 0, `Se esperaba lista vacía y hay ${alerts.length}`);
+    });
+
+    it("CP33 Cinco claves malas bloquean la cuenta", async () => {
+      let last = { status: 0, data: {} as ApiResult["data"] };
+      for (let i = 0; i < 5; i += 1) {
+        last = await request("POST", "/api/auth/login", {
+          body: { username: "cocinero", password: "clave-mala" },
+        });
+      }
+      check(last.status === 429, `Estado ${last.status}: ${messageOf(last)}`);
+      check(last.data.locked === true, "No marcó la cuenta como bloqueada");
+      check(Boolean(last.data.lockedUntil), "No devolvió hasta cuándo dura el bloqueo");
+    });
+
+    it("CP34 Con el bloqueo activo no entra ni con la clave buena", async () => {
+      const result = await request("POST", "/api/auth/login", {
+        body: { username: "cocinero", password: "cocinero123" },
+      });
+      check(result.status === 429, `Estado ${result.status}: ${messageOf(result)}`);
+      check(result.data.locked === true, "Debió mantener el bloqueo");
+    });
+
+    it("CP35 Los intentos de login quedan registrados", async () => {
+      const { LoginAttempt } = await import("../src/models");
+      const fails = await LoginAttempt.count({
+        where: { identifier: "cocinero", success: false },
+      });
+      check(fails >= 5, `Solo hay ${fails} intentos fallidos registrados`);
+    });
+
+    it("CP36 Restablecer contraseña con código levanta el bloqueo", async () => {
+      const asked = await request("POST", "/api/auth/password-reset", {
+        body: { username: "cocinero" },
+      });
+      check(asked.status === 200, `Estado ${asked.status}: ${messageOf(asked)}`);
+      check(Boolean(asked.data.devCode), "No devolvió el código de prueba");
+
+      const wrong = await request("POST", "/api/auth/password-reset/confirm", {
+        body: {
+          username: "cocinero",
+          code: "000000",
+          password: "nueva1234",
+        },
+      });
+      check(wrong.status === 400, `Estado ${wrong.status}`);
+
+      const changed = await request("POST", "/api/auth/password-reset/confirm", {
+        body: {
+          username: "cocinero",
+          code: String(asked.data.devCode),
+          password: "nueva1234",
+        },
+      });
+      check(changed.status === 200, `Estado ${changed.status}: ${messageOf(changed)}`);
+
+      const login = await request("POST", "/api/auth/login", {
+        body: { username: "cocinero", password: "nueva1234" },
+      });
+      check(login.status === 200, `Estado ${login.status}: ${messageOf(login)}`);
+      check(Boolean(login.data.accessToken), "No entregó acceso después del reset");
+    });
+
+    it("CP37 Al vencer el bloqueo se puede entrar", async () => {
+      const { User, LoginLock } = await import("../src/models");
+      const { hashPassword } = await import("../src/helpers/password");
+      const { lockKeyFor } = await import("../src/helpers/loginLock");
+
+      const lockedUser = await User.create({
+        name: "Bloqueo Temporal",
+        username: "bloqueo.temp",
+        email: "bloqueo.temp@timbo.com",
+        password_hash: await hashPassword("clave1234"),
+        role: "mesero",
+      });
+
+      let last = { status: 0, data: {} as ApiResult["data"] };
+      for (let i = 0; i < 5; i += 1) {
+        last = await request("POST", "/api/auth/login", {
+          body: { username: "bloqueo.temp", password: "mala" },
+        });
+      }
+      check(last.status === 429, `Estado ${last.status}: ${messageOf(last)}`);
+
+      await LoginLock.update(
+        { locked_until: new Date(Date.now() - 1000) },
+        { where: { lock_key: lockKeyFor(lockedUser.id, "bloqueo.temp") } }
+      );
+
+      const result = await request("POST", "/api/auth/login", {
+        body: { username: "bloqueo.temp", password: "clave1234" },
+      });
+      check(result.status === 200, `Estado ${result.status}: ${messageOf(result)}`);
+      check(Boolean(result.data.accessToken), "No entregó acceso al vencer el bloqueo");
+    });
+
+    it("CP38 No se puede editar el stock desde ingredientes", async () => {
+      const created = await request("POST", "/api/catalog/ingredients", {
+        token: adminToken,
+        body: {
+          name: "Sal parrillera",
+          unit: "kg",
+          stock_minimum: 1,
+          stock_current: 25,
+        },
+      });
+      check(created.status === 400, `Estado ${created.status}: ${messageOf(created)}`);
+      check(messageOf(created).includes("Inventario"), messageOf(created));
+
+      const patched = await request("PATCH", `/api/catalog/ingredients/${ingredientId}`, {
+        token: adminToken,
+        body: { stock_current: 99 },
+      });
+      check(patched.status === 400, `Estado ${patched.status}: ${messageOf(patched)}`);
+      check(messageOf(patched).includes("Inventario"), messageOf(patched));
     });
 });

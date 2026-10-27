@@ -18,6 +18,10 @@ export class OrderDetail extends Model<
   declare quantity: number;
   declare unit_price: number;
   declare observation: CreationOptional<string | null>;
+  declare sent_to_kitchen: CreationOptional<boolean>;
+  declare kitchen_status: CreationOptional<
+    "pendiente" | "en_preparacion" | "listo" | "entregado"
+  >;
   declare created_at: CreationOptional<Date>;
   declare updated_at: CreationOptional<Date>;
 }
@@ -48,6 +52,16 @@ OrderDetail.init(
     observation: {
       type: DataTypes.STRING(500),
       allowNull: true,
+    },
+    sent_to_kitchen: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    kitchen_status: {
+      type: DataTypes.STRING(32),
+      allowNull: false,
+      defaultValue: "pendiente",
     },
     created_at: DataTypes.DATE,
     updated_at: DataTypes.DATE,

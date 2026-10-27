@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import type { UserRole } from "../types/enums";
 
 export const requireRoles = (...roles: UserRole[]) => {
+  // 403 si el rol no puede hacer esta acción
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) {
       return res.status(401).json({ error: true, message: "No autorizado" });

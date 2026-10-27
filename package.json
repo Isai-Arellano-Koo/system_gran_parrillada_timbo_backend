@@ -9,6 +9,7 @@
     "start": "node dist/index.js",
     "db:sync": "tsx src/scripts/syncDb.ts",
     "db:seed": "tsx src/scripts/seed.ts",
+    "db:reset": "tsx src/scripts/seed.ts --reset",
     "test": "vitest run",
     "test:api": "vitest run"
   },

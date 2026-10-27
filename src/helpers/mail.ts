@@ -1,27 +1,43 @@
 import { env } from "../config/env";
 import { AppError } from "../middlewares/errorHandler";
 
-const SUBJECT = "Código para confirmar tu correo — Gran Parrillada Timbó";
+type MailKind = "confirm-email" | "password-reset";
 
-const messageText = (code: string) =>
-  [
-    "Usa este código para confirmar tu correo y activar tu cuenta:",
+const SUBJECT: Record<MailKind, string> = {
+  "confirm-email": "Código para confirmar tu correo — Gran Parrillada Timbó",
+  "password-reset": "Código para restablecer tu contraseña — Gran Parrillada Timbó",
+};
+
+const messageText = (kind: MailKind, code: string) => {
+  const lead =
+    kind === "password-reset"
+      ? "Usa este código para restablecer tu contraseña:"
+      : "Usa este código para confirmar tu correo y activar tu cuenta:";
+  return [
+    lead,
     "",
     code,
     "",
     "Caduca en 15 minutos. Si no pediste este código, ignora el mensaje.",
   ].join("\n");
+};
 
-const messageHtml = (code: string) => `
-  <p>Usa este código para confirmar tu correo y activar tu cuenta en <strong>Gran Parrillada Timbó</strong>:</p>
+const messageHtml = (kind: MailKind, code: string) => {
+  const lead =
+    kind === "password-reset"
+      ? "Usa este código para restablecer tu contraseña en <strong>Gran Parrillada Timbó</strong>:"
+      : "Usa este código para confirmar tu correo y activar tu cuenta en <strong>Gran Parrillada Timbó</strong>:";
+  return `
+  <p>${lead}</p>
   <p style="font-size:28px;letter-spacing:0.3em;font-weight:700">${code}</p>
   <p>Caduca en 15 minutos. Si no pediste este código, ignora el mensaje.</p>
 `;
+};
 
 export const isMailConfigured = () => Boolean(env.brevo.apiKey && env.brevo.sender);
 
-export const sendVerificationEmail = async (to: string, code: string) => {
-  if (env.nodeEnv === "test") return;
+const sendCodeEmail = async (to: string, code: string, kind: MailKind) => {
+  if (env.nodeEnv === "test") return; // las pruebas no mandan correo de verdad
 
   if (!env.brevo.apiKey || !env.brevo.sender) {
     throw new AppError(
@@ -29,6 +45,7 @@ export const sendVerificationEmail = async (to: string, code: string) => {
     );
   }
 
+  // Railway no deja SMTP, así que se manda por HTTPS
   const response = await fetch("https://api.brevo.com/v3/smtp/email", {
     method: "POST",
     headers: {
@@ -39,9 +56,9 @@ export const sendVerificationEmail = async (to: string, code: string) => {
     body: JSON.stringify({
       sender: { name: "Gran Parrillada Timbó", email: env.brevo.sender },
       to: [{ email: to }],
-      subject: SUBJECT,
-      textContent: messageText(code),
-      htmlContent: messageHtml(code),
+      subject: SUBJECT[kind],
+      textContent: messageText(kind, code),
+      htmlContent: messageHtml(kind, code),
     }),
     signal: AbortSignal.timeout(15_000),
   });
@@ -54,4 +71,12 @@ export const sendVerificationEmail = async (to: string, code: string) => {
       502
     );
   }
+};
+
+export const sendVerificationEmail = async (to: string, code: string) => {
+  await sendCodeEmail(to, code, "confirm-email");
+};
+
+export const sendPasswordResetEmail = async (to: string, code: string) => {
+  await sendCodeEmail(to, code, "password-reset");
 };

@@ -22,6 +22,7 @@ export const registerStockEntryController = async (
   }
 
   return sequelize.transaction(async (t) => {
+    // Bloqueamos la fila para que dos entradas no pisen el stock
     const ingredient = await Ingredient.findByPk(ingredientId, {
       transaction: t,
       lock: t.LOCK.UPDATE,
@@ -71,7 +72,7 @@ export const adjustStockController = async (
     if (!ingredient) throw new AppError("Ingrediente no encontrado", 404);
 
     const current = Number(ingredient.stock_current);
-    const delta = Number((next - current).toFixed(3));
+    const delta = Number((next - current).toFixed(3)); // diferencia entre lo que hay y lo que pusieron
 
     if (Math.abs(delta) < 0.0005) {
       return { ingredient, movement: null };
@@ -123,7 +124,7 @@ export const listLowStockAlertsController = async (): Promise<
   });
 
   return ingredients
-    .filter((item) => Number(item.stock_current) <= Number(item.stock_minimum))
+    .filter((item) => Number(item.stock_current) <= Number(item.stock_minimum)) // alerta si está en el mínimo o más abajo
     .map((item) => ({
       ingredient_id: item.id,
       name: item.name,

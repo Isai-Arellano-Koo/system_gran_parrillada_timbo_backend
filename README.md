@@ -58,8 +58,12 @@ cp .env.example .env
 # 4. Crear/actualizar las tablas
 npm run db:sync
 
-# 5. Cargar datos iniciales (usuarios de prueba, 30 mesas y la carta del restaurante)
+# 5. Cargar datos iniciales (usuarios de prueba, 30 mesas, categorías y la carta del restaurante)
 npm run db:seed
+
+# Vaciar la base y volver a cargar la semilla (incluye la carta de setiembre 2026).
+# Solo para tu entorno local: borra los datos.
+npm run db:reset
 
 # 6. Levantar el servidor
 npm run dev
@@ -95,8 +99,8 @@ El archivo `.env` está en `.gitignore` y nunca debe subirse al repositorio.
 | `npm run build` | Compila TypeScript a `dist/` |
 | `npm start` | Ejecuta la versión compilada (producción) |
 | `npm run db:sync` | Sincroniza los modelos con la base de datos |
-| `npm run db:seed` | Crea usuarios de prueba, 30 mesas y la carta del restaurante (categorías, platos, ingredientes y recetas) |
-| `npm run db:reset` | Reinicia los datos de prueba y vuelve a cargar el seed. **Borra datos: no usar en Railway con información real** |
+| `npm run db:seed` | Crea usuarios de prueba, 30 mesas, categorías y la carta (platos, ingredientes y recetas) |
+| `npm run db:reset` | Vacía la base de datos y vuelve a cargar la semilla. **Borra datos: no usar en Railway con información real** |
 | `npm test` | Ejecuta las pruebas con Vitest |
 
 ## Usuarios de prueba (solo desarrollo)
@@ -148,13 +152,14 @@ Todas las rutas empiezan con `/api`. Salvo las públicas, requieren el encabezad
 | GET | `/api/catalog/ingredients` | Lista ingredientes | Autenticado |
 | POST | `/api/catalog/ingredients` | Crea ingrediente | admin |
 | PATCH | `/api/catalog/ingredients/:id` | Modifica o activa/desactiva | admin |
-| GET | `/api/catalog/categories` | Lista categorías de la carta | Autenticado |
-| POST | `/api/catalog/categories` | Crea categoría | admin |
-| PATCH / DELETE | `/api/catalog/categories/:id` | Modifica o elimina categoría | admin |
+| GET | `/api/catalog/categories` | Lista categorías | Autenticado |
+| POST | `/api/catalog/categories` | Crea o reactiva una categoría | admin |
+| PATCH | `/api/catalog/categories/:id` | Renombra o reactiva | admin |
+| DELETE | `/api/catalog/categories/:id` | Quita la categoría e inhabilita sus platos | admin |
 | GET | `/api/catalog/dishes` | Lista platos | Autenticado |
 | GET | `/api/catalog/dishes/:id` | Detalle del plato con su receta | Autenticado |
 | GET | `/api/catalog/dishes/:id/status-changes` | Historial de cambios de estado del plato | admin |
-| POST | `/api/catalog/dishes` | Crea plato | admin |
+| POST | `/api/catalog/dishes` | Crea plato (requiere categoría activa) | admin |
 | PATCH | `/api/catalog/dishes/:id` | Modifica o activa/desactiva | admin |
 | PUT | `/api/catalog/dishes/:dishId/recipe` | Define la receta del plato | admin |
 
@@ -206,7 +211,7 @@ Todas las rutas empiezan con `/api`. Salvo las públicas, requieren el encabezad
 | `users` | Colaboradores: rol, estado activo, correo verificado, contraseña hasheada |
 | `email_verifications` | Códigos de confirmación de correo (guardados como hash, con vencimiento y uso) |
 | `ingredients` | Insumos: unidad, stock actual, stock mínimo, estado |
-| `categories` | Categorías de la carta (parrillas, entradas, bebidas, postres, etc.) |
+| `categories` | Categorías de la carta; al quitarlas se inhabilitan sus platos |
 | `dishes` | Platos del menú: categoría, presentación, precio, descripción, estado |
 | `dish_status_changes` | Historial de activaciones y desactivaciones de platos |
 | `user_status_changes` | Historial de activaciones y desactivaciones de usuarios, con su motivo |
@@ -330,7 +335,7 @@ Las pruebas de API **necesitan una base de datos separada**: defina `TEST_DATABA
 | Alessandro Del Piero Chavarria Medina | Scrum Master / Developer | Facilitación de Scrum, seguimiento del tablero y README |
 | Isai Kaleb Arellano Koo | Developer | Desarrollo del backend y del frontend (código y base de datos) |
 | Paul Marcelo Challco Peña | Integrator / UX-UI | Informe técnico y documentación |
-| Victor Samir Huallpa Alvites | Developer Desarrollo; apoyo a Isai y a Mateo en distintas historias |
+| Victor Samir Huallpa Alvites | Developer | Desarrollo; apoyo a Isai y a Mateo en distintas historias |
 
 ## Uso de herramientas de IA
 

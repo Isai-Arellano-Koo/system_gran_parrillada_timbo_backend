@@ -1,3 +1,4 @@
+// Valores fijos que usa la base y el frontend
 export const USER_ROLES = ["admin", "mesero", "cocinero", "cajero"] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
@@ -7,6 +8,7 @@ export type MeasurementUnit = (typeof MEASUREMENT_UNITS)[number];
 export const ORDER_STATUSES = [
   "en_edicion",
   "confirmado",
+  "cerrado",
   "cancelado",
 ] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];

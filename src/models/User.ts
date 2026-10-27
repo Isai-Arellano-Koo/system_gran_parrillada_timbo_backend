@@ -16,7 +16,7 @@ export class User extends Model<
   declare name: string;
   declare username: CreationOptional<string | null>;
   declare email: string;
-  declare password_hash: string;
+  declare password_hash: string; // nunca se guarda la clave en texto plano
   declare role: UserRole;
   declare is_active: CreationOptional<boolean>;
   declare email_verified: CreationOptional<boolean>;

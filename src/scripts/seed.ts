@@ -1,12 +1,29 @@
 import { hashPassword } from "../helpers/password";
-import { User, Table } from "../models";
+import {
+  User,
+  Table,
+  Category,
+  Dish,
+  Ingredient,
+  RecipeItem,
+  InventoryMovement,
+} from "../models";
+import { Op } from "sequelize";
 import { sequelize } from "../config/database";
 import "../models";
+import { CARTA_CATEGORIES, CARTA_DISHES } from "./cartaTimboSet2026";
+import { CARTA_INGREDIENTS, CARTA_RECIPES } from "./cartaRecipes";
+
+const shouldReset =
+  process.argv.includes("--reset") || process.env.RESET_DB === "true";
 
 const run = async () => {
   try {
     await sequelize.authenticate();
-    await sequelize.sync({ alter: true });
+    await sequelize.sync({ force: shouldReset });
+    if (shouldReset) {
+      console.log("Base de datos vaciada y tablas recreadas.");
+    }
 
     const users = [
       {
@@ -41,6 +58,8 @@ const run = async () => {
           email: item.email,
           password_hash: await hashPassword(item.password),
           role: item.role,
+          email_verified: true,
+          is_active: true,
         });
         console.log(`Usuario creado: ${item.email} / ${item.password}`);
       } else {
@@ -63,6 +82,159 @@ const run = async () => {
       );
       console.log("30 mesas creadas.");
     }
+
+    const categoryByName = new Map<string, Category>();
+    for (const [index, name] of CARTA_CATEGORIES.entries()) {
+      const [category] = await Category.findOrCreate({
+        where: { name },
+        defaults: {
+          name,
+          is_active: true,
+          sort_order: index + 1,
+        },
+      });
+      if (!category.is_active) {
+        category.is_active = true;
+        await category.save();
+      }
+      category.sort_order = index + 1;
+      await category.save();
+      categoryByName.set(name, category);
+    }
+    console.log(`${categoryByName.size} categorías de la carta.`);
+
+    let createdDishes = 0;
+    let updatedDishes = 0;
+    for (const item of CARTA_DISHES) {
+      const category = categoryByName.get(item.category);
+      if (!category) {
+        throw new Error(`Falta la categoría "${item.category}"`);
+      }
+      const existing = await Dish.findOne({
+        where: { name: item.name, presentation: item.presentation },
+      });
+      if (!existing) {
+        await Dish.create({
+          category_id: category.id,
+          name: item.name,
+          presentation: item.presentation,
+          price: item.price,
+          description: item.description,
+          is_active: true,
+          category_disabled: false,
+        });
+        createdDishes += 1;
+      } else {
+        existing.category_id = category.id;
+        existing.price = item.price;
+        existing.description = item.description;
+        existing.category_disabled = false;
+        if (!existing.is_active && category.is_active) {
+          existing.is_active = true;
+        }
+        await existing.save();
+        updatedDishes += 1;
+      }
+    }
+    console.log(
+      `Carta: ${createdDishes} platos nuevos, ${updatedDishes} actualizados.`
+    );
+
+    const ingredientByName = new Map<string, Ingredient>();
+    const keepIngredientNames = new Set(CARTA_INGREDIENTS.map((item) => item.name));
+    for (const item of CARTA_INGREDIENTS) {
+      const minimum =
+        item.unit === "unidad" ? 12 : item.unit === "kg" || item.unit === "lt" ? 2 : 400;
+      const [ingredient] = await Ingredient.findOrCreate({
+        where: { name: item.name },
+        defaults: {
+          name: item.name,
+          unit: item.unit,
+          stock_current: 0,
+          stock_minimum: minimum,
+          is_active: true,
+        },
+      });
+      ingredient.unit = item.unit;
+      ingredient.stock_minimum = minimum;
+      ingredient.is_active = true;
+      await ingredient.save();
+      ingredientByName.set(item.name, ingredient);
+    }
+
+    const extras = await Ingredient.findAll({
+      where: { name: { [Op.notIn]: [...keepIngredientNames] } },
+    });
+    const extraIds = extras.map((item) => item.id);
+    if (extraIds.length) {
+      await RecipeItem.destroy({ where: { ingredient_id: extraIds } });
+      await InventoryMovement.destroy({ where: { ingredient_id: extraIds } });
+      await Ingredient.destroy({ where: { id: extraIds } });
+    }
+
+    const admin = await User.findOne({ where: { username: "admin" } });
+    if (!admin) {
+      throw new Error("Falta el usuario administrador para registrar el inventario");
+    }
+
+    const STOCK_REASON = "compra en el mercado";
+    let stockEntries = 0;
+    for (const item of CARTA_INGREDIENTS) {
+      const ingredient = ingredientByName.get(item.name);
+      if (!ingredient) continue;
+      const already = await InventoryMovement.findOne({
+        where: {
+          ingredient_id: ingredient.id,
+          type: "entrada",
+          reason: STOCK_REASON,
+        },
+      });
+      if (already) continue;
+
+      const quantity = Number(item.stock);
+      ingredient.stock_current = Number(ingredient.stock_current) + quantity;
+      await ingredient.save();
+      await InventoryMovement.create({
+        ingredient_id: ingredient.id,
+        type: "entrada",
+        quantity,
+        reason: STOCK_REASON,
+        user_id: admin.id,
+        order_id: null,
+      });
+      stockEntries += 1;
+    }
+    console.log(
+      `${ingredientByName.size} ingredientes del recetario, ${stockEntries} entradas de inventario, ${extraIds.length} ingredientes viejos eliminados.`
+    );
+
+    let recipesSet = 0;
+    for (const recipe of CARTA_RECIPES) {
+      const dish = await Dish.findOne({
+        where: { name: recipe.name, presentation: recipe.presentation },
+      });
+      if (!dish) {
+        console.warn(
+          `No hay plato para receta: ${recipe.name} — ${recipe.presentation}`
+        );
+        continue;
+      }
+      const lines = recipe.items.map((line) => {
+        const ingredient = ingredientByName.get(line.ingredient);
+        if (!ingredient) {
+          throw new Error(`Falta ingrediente "${line.ingredient}"`);
+        }
+        return {
+          dish_id: dish.id,
+          ingredient_id: ingredient.id,
+          quantity: line.quantity,
+        };
+      });
+      await RecipeItem.destroy({ where: { dish_id: dish.id } });
+      await RecipeItem.bulkCreate(lines);
+      recipesSet += 1;
+    }
+    console.log(`${recipesSet} recetas asignadas desde la carta.`);
 
     console.log("Seed completado.");
     process.exit(0);

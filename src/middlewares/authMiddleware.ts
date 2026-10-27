@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { verifyAccessToken } from "../helpers/authTokens";
 
+// Revisa que venga un token y deja el usuario en req.user
 export const authMiddleware = (
   req: Request,
   res: Response,

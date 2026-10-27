@@ -1,5 +1,6 @@
 import { User } from "./User";
 import { Ingredient } from "./Ingredient";
+import { Category } from "./Category";
 import { Dish } from "./Dish";
 import { RecipeItem } from "./RecipeItem";
 import { Table } from "./Table";
@@ -8,6 +9,17 @@ import { OrderDetail } from "./OrderDetail";
 import { KitchenTicket } from "./KitchenTicket";
 import { InventoryMovement } from "./InventoryMovement";
 import { EmailVerification } from "./EmailVerification";
+import { LoginAttempt } from "./LoginAttempt";
+import { LoginLock } from "./LoginLock";
+import { UserStatusChange } from "./UserStatusChange";
+import { DishStatusChange } from "./DishStatusChange";
+
+// Relaciones entre tablas. Sequelize las usa al hacer include
+Category.hasMany(Dish, {
+  foreignKey: "category_id",
+  as: "dishes",
+});
+Dish.belongsTo(Category, { foreignKey: "category_id", as: "category" });
 
 Dish.hasMany(RecipeItem, {
   foreignKey: "dish_id",
@@ -78,9 +90,37 @@ Order.hasMany(InventoryMovement, {
 });
 InventoryMovement.belongsTo(Order, { foreignKey: "order_id", as: "order" });
 
+User.hasMany(UserStatusChange, { foreignKey: "user_id", as: "status_changes" });
+UserStatusChange.belongsTo(User, { foreignKey: "user_id", as: "user" });
+User.hasMany(UserStatusChange, {
+  foreignKey: "changed_by",
+  as: "status_changes_made",
+});
+UserStatusChange.belongsTo(User, {
+  foreignKey: "changed_by",
+  as: "changed_by_user",
+});
+
+Dish.hasMany(DishStatusChange, { foreignKey: "dish_id", as: "status_changes" });
+DishStatusChange.belongsTo(Dish, { foreignKey: "dish_id", as: "dish" });
+User.hasMany(DishStatusChange, {
+  foreignKey: "changed_by",
+  as: "dish_status_changes_made",
+});
+DishStatusChange.belongsTo(User, {
+  foreignKey: "changed_by",
+  as: "changed_by_user",
+});
+
+User.hasMany(LoginAttempt, { foreignKey: "user_id", as: "login_attempts" });
+LoginAttempt.belongsTo(User, { foreignKey: "user_id", as: "user" });
+User.hasMany(LoginLock, { foreignKey: "user_id", as: "login_locks" });
+LoginLock.belongsTo(User, { foreignKey: "user_id", as: "user" });
+
 export {
   User,
   Ingredient,
+  Category,
   Dish,
   RecipeItem,
   Table,
@@ -89,4 +129,8 @@ export {
   KitchenTicket,
   InventoryMovement,
   EmailVerification,
+  LoginAttempt,
+  LoginLock,
+  UserStatusChange,
+  DishStatusChange,
 };

@@ -8,6 +8,7 @@ export const signAccessToken = (payload: JwtPayload) => {
   });
 };
 
+// Token de sesión. No sirve para confirmar correo
 export const verifyAccessToken = (token: string): JwtPayload => {
   const payload = jwt.verify(token, env.jwt.secret) as JwtPayload & {
     purpose?: string;
@@ -18,6 +19,7 @@ export const verifyAccessToken = (token: string): JwtPayload => {
   return payload;
 };
 
+// Token corto, solo para el paso de confirmar el correo
 export const signConfirmToken = (userId: number) => {
   return jwt.sign({ purpose: "confirm-email", id: userId }, env.jwt.secret, {
     expiresIn: "15m",
