@@ -1,6 +1,8 @@
-import { Ingredient, InventoryMovement, User } from "../../models";
+import { Ingredient, InventoryMovement, Order, Table, User } from "../../models";
+import { Op } from "sequelize";
 import { sequelize } from "../../config/database";
 import { AppError } from "../../middlewares/errorHandler";
+import { INVENTORY_MOVEMENT_TYPES } from "../../types/enums";
 
 type StockEntryInput = {
   ingredient_id?: number;
@@ -99,14 +101,61 @@ export const adjustStockController = async (
   });
 };
 
-export const listMovementsController = async () => {
+export const listMovementsController = async (filters: {
+  ingredient_id?: string;
+  type?: string;
+  user_id?: string;
+  from?: string;
+  to?: string;
+} = {}) => {
+  const where: Record<string, unknown> = {};
+  const ingredientId = Number(filters.ingredient_id);
+  const userId = Number(filters.user_id);
+  if (ingredientId) where.ingredient_id = ingredientId;
+  if (userId) where.user_id = userId;
+  if (
+    filters.type &&
+    INVENTORY_MOVEMENT_TYPES.includes(
+      filters.type as (typeof INVENTORY_MOVEMENT_TYPES)[number]
+    )
+  ) {
+    where.type = filters.type;
+  }
+
+  if (filters.from || filters.to) {
+    const createdAt: { [Op.gte]?: Date; [Op.lte]?: Date } = {};
+    if (filters.from) createdAt[Op.gte] = new Date(filters.from);
+    if (filters.to) {
+      const end = new Date(filters.to);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(filters.to)) {
+        end.setHours(23, 59, 59, 999);
+      }
+      createdAt[Op.lte] = end;
+    }
+    where.created_at = createdAt;
+  }
+
   return InventoryMovement.findAll({
+    where,
     include: [
       { model: Ingredient, as: "ingredient", attributes: ["id", "name", "unit"] },
       { model: User, as: "user", attributes: ["id", "name", "email"] },
+      {
+        model: Order,
+        as: "order",
+        attributes: ["id", "code", "table_id"],
+        include: [{ model: Table, as: "table", attributes: ["id", "number"] }],
+      },
     ],
     order: [["created_at", "DESC"]],
   });
+};
+
+export const rejectDeleteMovementController = async () => {
+  throw new AppError(
+    "Un movimiento confirmado no se elimina. Registra una entrada o un ajuste para corregir el stock.",
+    409
+  );
 };
 
 export const listLowStockAlertsController = async (): Promise<
