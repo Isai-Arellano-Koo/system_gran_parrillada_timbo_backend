@@ -2,7 +2,7 @@
 
 API REST del sistema de gestión de pedidos, cocina e inventario de **Gran Parrillada Timbó**, restaurante de parrillas de 30 mesas. Proyecto del curso *Proyecto Tecnológico* (ISIL, NRC 3710), desarrollado con Scrum.
 
-El sistema reemplaza las comandas manuscritas y el control de inventario en Excel por un flujo digital: el mesero registra el pedido, cocina recibe la comanda y el inventario se descuenta según la receta de cada plato.
+Hoy el restaurante registra los pedidos en un sistema digital y las áreas reciben tickets, pero las modificaciones pueden comunicarse de forma verbal, el estado de las comandas no se sigue y los ingredientes no se descuentan a partir de los pedidos (el inventario se lleva en un kardex). Este sistema busca centralizar los pedidos con sus observaciones, dar seguimiento a las comandas y descontar los ingredientes según la receta de cada plato.
 
 - Frontend: https://github.com/Isai-Arellano-Koo/system_gran_parrillada_timbo_frontend
 - Tablero Scrum (Trello): https://trello.com/b/8duBXs5H/project-gran-parrillada-timbo
@@ -14,7 +14,8 @@ El sistema reemplaza las comandas manuscritas y el control de inventario en Exce
 | Sprint | Historias | Funcionalidad |
 |---|---|---|
 | Sprint 1 | HU16, HU01, HU02, HU03 | Registro de usuarios por rol, inicio de sesión, ingredientes, stock inicial y entradas |
-| Siguientes | HU04 a HU15 | Platos y recetas, pedidos, comandas, descuento de inventario, cancelaciones, movimientos y alertas |
+| Sprint 2 | HU04, HU05, HU06, HU07 y mejoras aprobadas | Registro de platos y categorías, recetas, apertura de pedidos por mesa, agregar platos con observaciones; control de intentos fallidos de login, motivo de cambio de estado de usuarios e ingredientes sin modificar stock |
+| Siguientes | HU08 a HU15 | Validación de disponibilidad, confirmación, comandas, descuento de inventario, cancelaciones, movimientos y alertas |
 
 El repositorio ya incluye código de módulos de sprints posteriores (platos, recetas, pedidos, cocina, ajustes y alertas). Su validación formal contra los criterios de aceptación se hace en el sprint que corresponda, según el Product Backlog.
 
@@ -35,7 +36,7 @@ El repositorio ya incluye código de módulos de sprints posteriores (platos, re
 
 ## Requisitos previos
 
-- Node.js 20 o superior `
+- Node.js 20.19 o superior (se recomienda la versión LTS)
 - PostgreSQL local, o la base de datos de Railway
 - Cuenta de Brevo con remitente verificado (solo para el envío del código por correo)
 
@@ -57,10 +58,11 @@ cp .env.example .env
 # 4. Crear/actualizar las tablas
 npm run db:sync
 
-# 5. Cargar datos iniciales (usuarios, 30 mesas, categorías y carta)
+# 5. Cargar datos iniciales (usuarios de prueba, 30 mesas, categorías y la carta del restaurante)
 npm run db:seed
 
-# Vaciar la base y volver a cargar la semilla (incluye la carta de setiembre 2026)
+# Vaciar la base y volver a cargar la semilla (incluye la carta de setiembre 2026).
+# Solo para tu entorno local: borra los datos.
 npm run db:reset
 
 # 6. Levantar el servidor
@@ -97,13 +99,13 @@ El archivo `.env` está en `.gitignore` y nunca debe subirse al repositorio.
 | `npm run build` | Compila TypeScript a `dist/` |
 | `npm start` | Ejecuta la versión compilada (producción) |
 | `npm run db:sync` | Sincroniza los modelos con la base de datos |
-| `npm run db:seed` | Crea usuarios de prueba, 30 mesas, categorías y la carta | 
-| `npm run db:reset` | Vacía la base de datos y vuelve a cargar la semilla |
+| `npm run db:seed` | Crea usuarios de prueba, 30 mesas, categorías y la carta (platos, ingredientes y recetas) |
+| `npm run db:reset` | Vacía la base de datos y vuelve a cargar la semilla. **Borra datos: no usar en Railway con información real** |
 | `npm test` | Ejecuta las pruebas con Vitest |
 
 ## Usuarios de prueba (solo desarrollo)
 
-El comando `npm run db:seed` crea tres usuarios: `admin`, `mesero` y `cocinero`. Sus correos y contraseñas iniciales están en `src/scripts/seed.ts`. **No usar estas credenciales en un entorno real**: cámbialas o elimina los usuarios antes de usar el sistema con datos del restaurante.
+El comando `npm run db:seed` carga además la **carta de Gran Parrillada Timbó** (19 categorías, sus platos con precio, los ingredientes y las recetas), de modo que el sistema se pruebe con datos parecidos a los reales. Los ingredientes de la carta quedan con stock en 0 y un stock mínimo según su unidad (para ver descuentos y alertas, primero hay que registrar entradas de stock). Crea tres usuarios: `admin`, `mesero` y `cocinero`. Sus correos y contraseñas iniciales están en `src/scripts/seed.ts`. **No usar estas credenciales en un entorno real**: cámbialas o elimina los usuarios antes de usar el sistema con datos del restaurante.
 
 ## Roles
 
@@ -126,6 +128,8 @@ Todas las rutas empiezan con `/api`. Salvo las públicas, requieren el encabezad
 | POST | `/api/auth/login` | Inicio de sesión con correo o nombre de usuario | Público |
 | POST | `/api/auth/confirm-email` | Confirma el correo con el código recibido | Público |
 | POST | `/api/auth/confirm-email/resend` | Reenvía el código | Público |
+| POST | `/api/auth/password-reset` | Solicita el restablecimiento de contraseña | Público |
+| POST | `/api/auth/password-reset/confirm` | Confirma el nuevo password con el código | Público |
 | POST | `/api/auth/register` | Registra un usuario con rol | admin |
 | GET | `/api/auth/me` | Datos de la sesión actual | Autenticado |
 | POST | `/api/auth/logout` | Cierra sesión | Autenticado |
@@ -137,20 +141,24 @@ Todas las rutas empiezan con `/api`. Salvo las públicas, requieren el encabezad
 | GET | `/api/users` | Lista usuarios |
 | POST | `/api/users` | Crea usuario |
 | GET | `/api/users/:id` | Detalle de usuario |
-| PATCH | `/api/users/:id` | Modifica rol o activa/desactiva |
+| PATCH | `/api/users/:id` | Modifica rol o activa/desactiva (registra el motivo) |
+| GET | `/api/users/status-changes` | Historial de cambios de estado de todos los usuarios |
+| GET | `/api/users/:id/status-changes` | Historial de cambios de estado de un usuario |
 
-**Catálogo (HU02, HU04, HU05)**
+**Catálogo (HU02, HU04, HU05)** — la lectura la hace cualquier usuario autenticado; crear o modificar es solo del `admin`
 
 | Método | Ruta | Descripción | Acceso |
 |---|---|---|---|
+| GET | `/api/catalog/ingredients` | Lista ingredientes | Autenticado |
+| POST | `/api/catalog/ingredients` | Crea ingrediente | admin |
+| PATCH | `/api/catalog/ingredients/:id` | Modifica o activa/desactiva | admin |
 | GET | `/api/catalog/categories` | Lista categorías | Autenticado |
 | POST | `/api/catalog/categories` | Crea o reactiva una categoría | admin |
 | PATCH | `/api/catalog/categories/:id` | Renombra o reactiva | admin |
 | DELETE | `/api/catalog/categories/:id` | Quita la categoría e inhabilita sus platos | admin |
-| GET | `/api/catalog/ingredients` | Lista ingredientes | Autenticado |
-| POST | `/api/catalog/ingredients` | Crea ingrediente | admin |
-| PATCH | `/api/catalog/ingredients/:id` | Modifica o activa/desactiva | admin |
 | GET | `/api/catalog/dishes` | Lista platos | Autenticado |
+| GET | `/api/catalog/dishes/:id` | Detalle del plato con su receta | Autenticado |
+| GET | `/api/catalog/dishes/:id/status-changes` | Historial de cambios de estado del plato | admin |
 | POST | `/api/catalog/dishes` | Crea plato (requiere categoría activa) | admin |
 | PATCH | `/api/catalog/dishes/:id` | Modifica o activa/desactiva | admin |
 | PUT | `/api/catalog/dishes/:dishId/recipe` | Define la receta del plato | admin |
@@ -174,6 +182,7 @@ Todas las rutas empiezan con `/api`. Salvo las públicas, requieren el encabezad
 | GET | `/api/orders/:orderId` | Detalle del pedido | mesero, admin, cocinero |
 | POST | `/api/orders` | Abre un pedido para una mesa | mesero, admin |
 | POST | `/api/orders/:orderId/details` | Agrega plato, cantidad y observación | mesero, admin |
+| PATCH | `/api/orders/:orderId/details/:detailId` | Modifica cantidad u observación de un plato | mesero, admin |
 | DELETE | `/api/orders/:orderId/details/:detailId` | Elimina un detalle | mesero, admin |
 | POST | `/api/orders/:orderId/validate-stock` | Valida disponibilidad de ingredientes | mesero, admin |
 | POST | `/api/orders/:orderId/confirm` | Confirma el pedido | mesero, admin |
@@ -204,6 +213,9 @@ Todas las rutas empiezan con `/api`. Salvo las públicas, requieren el encabezad
 | `ingredients` | Insumos: unidad, stock actual, stock mínimo, estado |
 | `categories` | Categorías de la carta; al quitarlas se inhabilitan sus platos |
 | `dishes` | Platos del menú: categoría, presentación, precio, descripción, estado |
+| `dish_status_changes` | Historial de activaciones y desactivaciones de platos |
+| `user_status_changes` | Historial de activaciones y desactivaciones de usuarios, con su motivo |
+| `login_attempts` / `login_locks` | Intentos fallidos de inicio de sesión y bloqueos temporales |
 | `recipe_items` | Ingredientes y cantidades de cada plato |
 | `tables` | Las 30 mesas del salón |
 | `orders` | Pedidos: mesa, mesero, estado, total, motivo de cancelación |
@@ -211,7 +223,26 @@ Todas las rutas empiezan con `/api`. Salvo las públicas, requieren el encabezad
 | `kitchen_tickets` | Comandas: estado y quién lo cambió |
 | `inventory_movements` | Historial de movimientos: ingrediente, tipo, cantidad, motivo, pedido y usuario |
 
-`[Adjuntar el diagrama entidad-relación en /docs]`
+```mermaid
+erDiagram
+    categories ||--o{ dishes : "agrupa"
+    dishes ||--o{ recipe_items : "se compone de"
+    ingredients ||--o{ recipe_items : "se usa en"
+    tables ||--o{ orders : "atiende"
+    users ||--o{ orders : "toma (mesero)"
+    orders ||--o{ order_details : "contiene"
+    dishes ||--o{ order_details : "se pide en"
+    orders ||--o| kitchen_tickets : "genera"
+    users ||--o{ kitchen_tickets : "actualiza"
+    ingredients ||--o{ inventory_movements : "registra"
+    users ||--o{ inventory_movements : "realiza"
+    orders ||--o{ inventory_movements : "origina"
+    users ||--o{ user_status_changes : "historial"
+    dishes ||--o{ dish_status_changes : "historial"
+    users ||--o{ dish_status_changes : "realiza"
+    users ||--o{ login_attempts : "intenta"
+    users ||--o{ login_locks : "bloqueos"
+```
 
 ## Estructura del proyecto
 
@@ -236,6 +267,8 @@ test/              # Pruebas (api.test.ts, mail.test.ts)
 - Las contraseñas se guardan con hash `bcrypt`, nunca en texto plano.
 - Autenticación con JWT y control de acceso por rol en cada ruta.
 - La cuenta se activa al confirmar el correo con un código de 15 minutos, enviado por Brevo.
+- Tras **5 intentos fallidos en 15 minutos**, la cuenta se bloquea 15 minutos.
+- Cada cambio de estado de un usuario o de un plato queda registrado en un historial, con su motivo.
 - Un administrador no puede cambiar su propio rol ni desactivarse.
 - CORS limitado al origen configurado en `CORS_ORIGIN`.
 
@@ -245,7 +278,7 @@ test/              # Pruebas (api.test.ts, mail.test.ts)
 npm test
 ```
 
-Incluye pruebas de API (login con correo y usuario, registro y permisos por rol, validación de ingredientes y de stock, entradas, movimientos y alertas, confirmación de correo) y pruebas del envío de correo con Brevo.
+Incluye pruebas de API (casos CP01 a CP38: login con correo y usuario, bloqueo por intentos fallidos, registro y permisos por rol, validación de ingredientes y de stock, entradas, movimientos y alertas, confirmación de correo) y pruebas del envío de correo con Brevo.
 
 Las pruebas de API **necesitan una base de datos separada**: defina `TEST_DATABASE_URL` en un archivo `.env.test` (no se sube al repositorio). Si apunta a la misma base que `DATABASE_URL`, las pruebas se detienen para proteger los datos reales.
 
@@ -263,18 +296,21 @@ Las pruebas de API **necesitan una base de datos separada**: defina `TEST_DATABA
 | Contraseñas con `bcrypt` (12 rondas) | Definimos la tecnología de hash en el tablero (incidencia de Trello) y elegimos una librería ampliamente usada; nunca guardamos contraseñas en texto plano. |
 | Login con correo **o** nombre de usuario | Al principio solo entraba con correo. Lo corregimos porque el personal del restaurante usa su usuario en el día a día (pruebas CP01 y CP02). |
 | Código de verificación por correo, guardado como hash y con vencimiento de 15 minutos | Queremos confirmar que el correo del colaborador existe sin dejar el código legible en la base de datos. |
-| Envío de correo con la API HTTPS de Brevo en lugar de SMTP | La elegimos porque permite enviar los códigos de verificación mediante una API HTTPS, sin tener que configurar y mantener un servidor SMTP propio. Así, la integración del correo queda más sencilla para el proyecto. |
+| Envío de correo con la API HTTPS de Brevo en lugar de SMTP | El correo se envía por HTTPS (puerto 443), sin abrir conexiones SMTP desde el servidor. Se configura con `BREVO_API_KEY` y `BREVO_SENDER`. |
 | Un administrador no puede cambiar su propio rol ni desactivarse | Evita que el sistema se quede sin administrador por un error (CP14 y CP15). |
 | Pruebas con una base de datos separada | Las pruebas se detienen si apuntan a la base real, para no borrar datos del restaurante por accidente. |
 | Stock con 3 decimales | Los insumos de una parrilla se manejan en kilos, gramos y litros, no solo en unidades enteras. |
+| Bloqueo temporal tras 5 intentos fallidos | Mejora aprobada tras la Sprint Review del Sprint 1. Frena los intentos de adivinar contraseñas: 5 fallos en 15 minutos bloquean la cuenta durante 15 minutos. |
+| Historial de cambios de estado con motivo | Mejora aprobada: cada activación o desactivación debe tener responsable y razón, para que se pueda rastrear. |
+| Carga de la carta real del restaurante en el seed | Probamos con platos, precios y recetas parecidos a los del restaurante, no con datos de ejemplo. Los platos y precios siguen la carta del restaurante (`src/scripts/cartaTimboSet2026.ts`); las cantidades de las recetas (`cartaRecipes.ts`) sirven para probar el descuento de inventario. |
 | Rol `cajero` incorporado al modelo | Surgió como incidencia en el tablero; hoy existe en el sistema y en las pruebas. |
 
 ## Dificultades que tuvimos
 
 - **Inicio de sesión solo por correo:** lo detectamos al probar y lo resolvimos aceptando también el nombre de usuario.
 - **Tecnología de hash sin definir:** quedó registrada como incidencia y se cerró al adoptar `bcrypt`.
-- **Pedidos múltiples por mesa (HU06):** se validó con el Product Owner si el restaurante lo permite. ``
-
+- **Pedidos múltiples por mesa (HU06):** se validó con el Product Owner si el restaurante lo permite. En el sistema, una mesa no puede tener dos pedidos en edición a la vez: si ya tiene uno abierto, el backend lo rechaza con el mensaje "La mesa ya tiene un pedido en edición".
+- **Disponibilidad del equipo:** varios integrantes trabajan durante el día, así que el avance fue irregular. Acordamos dailies martes, viernes y sábado a las 10 pm, con aviso previo y avance por escrito si alguien no puede asistir.
 
 ## Cómo demostrar el Sprint 1
 
@@ -287,9 +323,9 @@ Las pruebas de API **necesitan una base de datos separada**: defina `TEST_DATABA
 
 ## Pendiente y limitaciones
 
-- Faltan por marcar en Trello las validaciones finales del Product Owner de HU16, HU01, HU02 y HU03.
-- Los módulos de pedidos, cocina y recetas existen en el código pero se validan formalmente en los siguientes sprints.
-
+- Sprint 2 en curso: platos, recetas y apertura de pedidos están implementados; falta validarlos contra sus criterios de aceptación y la Definition of Done.
+- Los módulos de confirmación de pedido, comandas, descuento automático de inventario y alertas se validan formalmente en los siguientes sprints.
+- El correo de verificación solo se envía si están configuradas las credenciales de Brevo; en una instalación local sin ellas, esa parte no funciona.
 
 ## Equipo
 
@@ -299,7 +335,7 @@ Las pruebas de API **necesitan una base de datos separada**: defina `TEST_DATABA
 | Alessandro Del Piero Chavarria Medina | Scrum Master / Developer | Facilitación de Scrum, seguimiento del tablero y README |
 | Isai Kaleb Arellano Koo | Developer | Desarrollo del backend y del frontend (código y base de datos) |
 | Paul Marcelo Challco Peña | Integrator / UX-UI | Informe técnico y documentación |
-| Victor Samir Huallpa Alvites | Developer | |
+| Victor Samir Huallpa Alvites | Developer | Desarrollo; apoyo a Isai y a Mateo en distintas historias |
 
 ## Uso de herramientas de IA
 
