@@ -33,15 +33,16 @@ const limaDayMonth = () => {
 };
 
 // Mesa + día/mes + correlativo del día. Ej: M01-2610-03
-const generateOrderCode = async (tableNumber: number) => {
+const generateOrderCode = async (tableNumber: number, t: Transaction) => {
   const mesa = String(tableNumber).padStart(2, "0");
   const prefix = `M${mesa}-${limaDayMonth()}-`;
   const count = await Order.count({
     where: { code: { [Op.like]: `${prefix}%` } },
+    transaction: t,
   });
   for (let step = 1; step <= 20; step++) {
     const code = `${prefix}${String(count + step).padStart(2, "0")}`;
-    const taken = await Order.findOne({ where: { code } });
+    const taken = await Order.findOne({ where: { code }, transaction: t });
     if (!taken) return code;
   }
   return `${prefix}${Math.floor(Math.random() * 90 + 10)}`;
@@ -232,31 +233,41 @@ export const seedTablesController = async (count = 30) => {
 export const openOrderController = async (tableId: number, waiterId: number) => {
   if (!tableId) throw new AppError("Debe seleccionar una mesa");
 
-  const table = await Table.findByPk(tableId);
-  if (!table || !table.is_active) {
-    throw new AppError("Mesa no válida", 404);
-  }
+  const orderId = await sequelize.transaction(async (t) => {
+    const table = await Table.findByPk(tableId, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    if (!table || !table.is_active) {
+      throw new AppError("Mesa no válida", 404);
+    }
 
-  // Sigue ocupada mientras comen, aunque el pedido ya haya ido a cocina
-  const open = await Order.findOne({
-    where: {
-      table_id: tableId,
-      status: { [Op.in]: ["en_edicion", "confirmado"] },
-    },
+    // Sigue ocupada mientras comen, aunque el pedido ya haya ido a cocina
+    const open = await Order.findOne({
+      where: {
+        table_id: tableId,
+        status: { [Op.in]: ["en_edicion", "confirmado"] },
+      },
+      transaction: t,
+    });
+    if (open) {
+      throw new AppError("La mesa sigue ocupada");
+    }
+
+    const order = await Order.create(
+      {
+        code: await generateOrderCode(table.number, t),
+        table_id: tableId,
+        waiter_id: waiterId,
+        status: "en_edicion",
+        total: 0,
+      },
+      { transaction: t }
+    );
+    return order.id;
   });
-  if (open) {
-    throw new AppError("La mesa sigue ocupada");
-  }
 
-  const order = await Order.create({
-    code: await generateOrderCode(table.number),
-    table_id: tableId,
-    waiter_id: waiterId,
-    status: "en_edicion",
-    total: 0,
-  });
-
-  return loadOrder(order.id);
+  return loadOrder(orderId);
 };
 
 export const listOrdersController = async () => {
@@ -452,7 +463,7 @@ export const validateStockController = async (orderId: number) => {
 
 export const confirmOrderController = async (orderId: number) => {
   // Todo o nada: stock, estado del pedido y comanda se guardan juntos
-  return sequelize.transaction(async (t) => {
+  await sequelize.transaction(async (t) => {
     const order = await Order.findByPk(orderId, {
       transaction: t,
       lock: t.LOCK.UPDATE,
@@ -507,13 +518,13 @@ export const confirmOrderController = async (orderId: number) => {
       detail.kitchen_status = "pendiente";
       await detail.save({ transaction: t });
     }
-
-    return loadOrder(orderId);
   });
+
+  return loadOrder(orderId);
 };
 
 export const sendAdditionsController = async (orderId: number) => {
-  return sequelize.transaction(async (t) => {
+  await sequelize.transaction(async (t) => {
     const order = await Order.findByPk(orderId, {
       transaction: t,
       lock: t.LOCK.UPDATE,
@@ -552,8 +563,9 @@ export const sendAdditionsController = async (orderId: number) => {
 
     syncPaidFlag(order);
     await order.save({ transaction: t });
-    return loadOrder(orderId);
   });
+
+  return loadOrder(orderId);
 };
 
 export const setOrderPaidController = async (orderId: number, paid: boolean) => {
@@ -583,7 +595,7 @@ export const cancelOrderController = async (
   const cancelReason = reason?.trim();
   if (!cancelReason) throw new AppError("La cancelación exige un motivo");
 
-  return sequelize.transaction(async (t) => {
+  await sequelize.transaction(async (t) => {
     const order = await Order.findByPk(orderId, {
       transaction: t,
       lock: t.LOCK.UPDATE,
@@ -654,9 +666,9 @@ export const cancelOrderController = async (
     order.cancel_reason = cancelReason;
     order.cancelled_at = new Date();
     await order.save({ transaction: t });
-
-    return loadOrder(orderId);
   });
+
+  return loadOrder(orderId);
 };
 
 export const closeOrderController = async (orderId: number) => {
