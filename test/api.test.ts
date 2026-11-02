@@ -547,6 +547,35 @@ describe("API Gran Parrillada Timbó", () => {
       check(entry?.user?.name, "Falta el usuario");
     });
 
+    it("CP28b Filtrar movimientos por tipo", async () => {
+      const result = await request(
+        "GET",
+        "/api/inventory/movements?type=entrada",
+        { token: adminToken }
+      );
+      check(result.status === 200, `Estado ${result.status}`);
+      const movements = result.data as unknown as Array<{ type: string }>;
+      check(Array.isArray(movements), "La respuesta no es una lista");
+      check(
+        movements.length > 0 && movements.every((item) => item.type === "entrada"),
+        "El filtro por tipo no devolvió solo entradas"
+      );
+    });
+
+    it("CP28c Un movimiento no se elimina", async () => {
+      const listed = await request("GET", "/api/inventory/movements", {
+        token: adminToken,
+      });
+      const movements = listed.data as unknown as Array<{ id: number }>;
+      const id = movements[0]?.id;
+      check(id, "No hay movimiento para intentar borrar");
+      const result = await request("DELETE", `/api/inventory/movements/${id}`, {
+        token: adminToken,
+      });
+      check(result.status === 409, `Estado ${result.status}: ${messageOf(result)}`);
+      check(messageOf(result).toLowerCase().includes("elimina"), messageOf(result));
+    });
+
     it("CP29 Listar alertas de stock mínimo", async () => {
       const result = await request("GET", "/api/inventory/alerts", {
         token: adminToken,

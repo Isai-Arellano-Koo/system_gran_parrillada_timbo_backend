@@ -29,6 +29,14 @@ const rejectDirectStockEdit = (data: IngredientInput) => {
   }
 };
 
+const parseStockMinimum = (value: unknown) => {
+  const amount = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(amount) || amount < 0) {
+    throw new AppError("El stock mínimo no puede ser negativo ni inválido");
+  }
+  return amount;
+};
+
 type DishInput = {
   name?: string;
   presentation?: string;
@@ -161,7 +169,7 @@ export const createIngredientController = async (data: IngredientInput) => {
   return Ingredient.create({
     name,
     unit: data.unit,
-    stock_minimum: Number(data.stock_minimum ?? 0),
+    stock_minimum: parseStockMinimum(data.stock_minimum ?? 0),
     is_active: data.is_active ?? true,
   });
 };
@@ -196,7 +204,7 @@ export const updateIngredientController = async (
   }
 
   if (data.stock_minimum !== undefined) {
-    ingredient.stock_minimum = Number(data.stock_minimum);
+    ingredient.stock_minimum = parseStockMinimum(data.stock_minimum);
   }
 
   if (data.is_active !== undefined) {

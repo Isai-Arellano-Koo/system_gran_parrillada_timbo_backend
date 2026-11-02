@@ -4,6 +4,7 @@ import {
   adjustStockController,
   listMovementsController,
   listLowStockAlertsController,
+  rejectDeleteMovementController,
 } from "../../controllers/inventory/inventory.controller";
 import { AppError } from "../../middlewares/errorHandler";
 
@@ -37,8 +38,19 @@ export const registerStockEntryHandler = (req: Request, res: Response) =>
 export const adjustStockHandler = (req: Request, res: Response) =>
   handle(res, () => adjustStockController(req.body, req.user!.id));
 
-export const listMovementsHandler = (_req: Request, res: Response) =>
-  handle(res, () => listMovementsController());
+export const listMovementsHandler = (req: Request, res: Response) =>
+  handle(res, () =>
+    listMovementsController({
+      ingredient_id: String(req.query.ingredient_id || ""),
+      type: String(req.query.type || ""),
+      user_id: String(req.query.user_id || ""),
+      from: String(req.query.from || ""),
+      to: String(req.query.to || ""),
+    })
+  );
+
+export const rejectDeleteMovementHandler = (_req: Request, res: Response) =>
+  handle(res, () => rejectDeleteMovementController());
 
 export const listLowStockAlertsHandler = (_req: Request, res: Response) =>
   handle(res, () => listLowStockAlertsController());
