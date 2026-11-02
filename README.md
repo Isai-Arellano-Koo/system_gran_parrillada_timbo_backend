@@ -14,10 +14,42 @@ Hoy el restaurante registra los pedidos en un sistema digital y las áreas recib
 | Sprint | Historias | Funcionalidad |
 |---|---|---|
 | Sprint 1 | HU16, HU01, HU02, HU03 | Registro de usuarios por rol, inicio de sesión, ingredientes, stock inicial y entradas |
-| Sprint 2 | HU04, HU05, HU06, HU07 y mejoras aprobadas | Registro de platos y categorías, recetas, apertura de pedidos por mesa, agregar platos con observaciones; control de intentos fallidos de login, motivo de cambio de estado de usuarios e ingredientes sin modificar stock |
-| Siguientes | HU08 a HU15 | Validación de disponibilidad, confirmación, comandas, descuento de inventario, cancelaciones, movimientos y alertas |
+| Sprint 2 | Historias del Sprint Backlog entre HU04 y HU15, y mejoras aprobadas | Carta (platos, categorías y recetas), flujo completo del pedido (apertura, validación de stock, confirmación, comanda y descuento de inventario), cancelaciones, movimientos y alertas de stock; control de intentos fallidos de login, motivo de cambio de estado de usuarios e ingredientes sin modificar stock |
 
-El repositorio ya incluye código de módulos de sprints posteriores (platos, recetas, pedidos, cocina, ajustes y alertas). Su validación formal contra los criterios de aceptación se hace en el sprint que corresponda, según el Product Backlog.
+Qué historias entraron en cada sprint y su estado de validación se registran en el tablero de Trello. A continuación, dónde vive cada historia en el código.
+
+## Historias y dónde están en el código
+
+| HU | Historia | Dónde |
+|---|---|---|
+| HU16 | Registrar usuario según rol | `POST /api/users`, `POST /api/auth/register` |
+| HU01 | Iniciar sesión según rol | `POST /api/auth/login` |
+| HU02 | Registrar ingredientes | `/api/catalog/ingredients` |
+| HU03 | Registrar stock inicial y entradas | `POST /api/inventory/entries` |
+| HU04 | Registrar platos | `/api/catalog/dishes` y `/api/catalog/categories` |
+| HU05 | Asociar recetas a los platos | `PUT /api/catalog/dishes/:dishId/recipe` |
+| HU06 | Abrir un pedido para una mesa | `POST /api/orders` |
+| HU07 | Agregar platos y observaciones | `POST` y `PATCH /api/orders/:orderId/details` |
+| HU08 | Validar disponibilidad de ingredientes | `POST /api/orders/:orderId/validate-stock` |
+| HU09 | Confirmar el pedido y calcular el total | `POST /api/orders/:orderId/confirm` |
+| HU10 | Generar y enviar la comanda a cocina | Se genera al confirmar; `GET /api/kitchen` |
+| HU11 | Visualizar y cambiar el estado de la comanda | `PATCH /api/kitchen/:ticketId/status` y `PATCH /api/kitchen/details/:detailId/status` |
+| HU12 | Descontar ingredientes automáticamente | Dentro de la confirmación del pedido |
+| HU13 | Cancelar pedidos y gestionar stock o merma | `POST /api/orders/:orderId/cancel` |
+| HU14 | Consultar movimientos de inventario | `GET /api/inventory/movements` |
+| HU15 | Alertar por stock mínimo | `GET /api/inventory/alerts` |
+| HU17 | Registrar ajustes de inventario | `POST /api/inventory/adjustments` |
+
+### Reglas de negocio que implementa el flujo del pedido
+
+- Una mesa no puede tener dos pedidos abiertos a la vez, ni abrirse un pedido en una mesa que sigue ocupada.
+- El pedido debe tener al menos un plato, y la cantidad de cada plato debe ser un entero mayor que cero.
+- Al confirmar, la confirmación, la comanda y el descuento de inventario se guardan **juntos o no se guarda nada**, y el stock nunca puede quedar negativo.
+- Un plato ya enviado a cocina no se puede modificar ni eliminar. Si el cliente pide más, se envían como **platos adicionales** (extras).
+- Al cancelar, el motivo es obligatorio: si cocina todavía no empezó, el stock vuelve; si ya se cocinó, se registra como merma.
+- Se registra si el pedido fue pagado. Al cerrar el pedido, la mesa se libera.
+- Los movimientos de inventario no se pueden borrar; las correcciones se hacen con un ajuste.
+- El código del pedido combina la mesa, el día y mes, y un correlativo del día (por ejemplo `M01-2610-03`).
 
 ## Tecnologías
 
@@ -169,10 +201,11 @@ Todas las rutas empiezan con `/api`. Salvo las públicas, requieren el encabezad
 |---|---|---|
 | POST | `/api/inventory/entries` | Registra stock inicial o entrada |
 | POST | `/api/inventory/adjustments` | Registra un ajuste |
-| GET | `/api/inventory/movements` | Lista movimientos |
+| GET | `/api/inventory/movements` | Lista movimientos; filtros por `ingredient_id`, `type`, `user_id`, `from` y `to` |
+| DELETE | `/api/inventory/movements/:id` | Siempre se rechaza: los movimientos no se borran |
 | GET | `/api/inventory/alerts` | Ingredientes en stock mínimo |
 
-**Pedidos (HU06 a HU09, HU13)**
+**Pedidos (HU06 a HU09, HU12 y HU13)**
 
 | Método | Ruta | Descripción | Acceso |
 |---|---|---|---|
@@ -185,8 +218,11 @@ Todas las rutas empiezan con `/api`. Salvo las públicas, requieren el encabezad
 | PATCH | `/api/orders/:orderId/details/:detailId` | Modifica cantidad u observación de un plato | mesero, admin |
 | DELETE | `/api/orders/:orderId/details/:detailId` | Elimina un detalle | mesero, admin |
 | POST | `/api/orders/:orderId/validate-stock` | Valida disponibilidad de ingredientes | mesero, admin |
-| POST | `/api/orders/:orderId/confirm` | Confirma el pedido | mesero, admin |
-| POST | `/api/orders/:orderId/cancel` | Cancela el pedido con motivo | admin, mesero |
+| POST | `/api/orders/:orderId/confirm` | Confirma el pedido, genera la comanda y descuenta los ingredientes en una sola operación | mesero, admin |
+| POST | `/api/orders/:orderId/additions` | Envía a cocina los platos adicionales de una mesa con pedido abierto | mesero, admin |
+| PATCH | `/api/orders/:orderId/paid` | Marca el pedido como pagado o sin pagar | mesero, admin, cajero |
+| POST | `/api/orders/:orderId/close` | Cierra el pedido y libera la mesa | mesero, admin |
+| POST | `/api/orders/:orderId/cancel` | Cancela el pedido con motivo (el stock vuelve o se registra merma) | admin, mesero |
 
 **Cocina (HU10, HU11)**
 
@@ -194,14 +230,15 @@ Todas las rutas empiezan con `/api`. Salvo las públicas, requieren el encabezad
 |---|---|---|---|
 | GET | `/api/kitchen` | Lista comandas | cocinero, admin, mesero |
 | PATCH | `/api/kitchen/:ticketId/status` | Cambia el estado de la comanda | cocinero, admin |
+| PATCH | `/api/kitchen/details/:detailId/status` | Cambia el estado de un plato dentro de la comanda | cocinero, admin, mesero |
 
 ## Estados y tipos definidos
 
 | Concepto | Valores |
 |---|---|
 | Unidades de medida | `kg`, `g`, `lt`, `ml`, `unidad` |
-| Estado del pedido | `en_edicion`, `confirmado`, `cancelado` |
-| Estado de la comanda | `pendiente`, `en_preparacion`, `listo`, `entregado` |
+| Estado del pedido | `en_edicion`, `confirmado`, `cerrado`, `cancelado` |
+| Estado de la comanda y de cada plato | `pendiente`, `en_preparacion`, `listo`, `entregado` |
 | Tipos de movimiento de inventario | `entrada`, `salida_venta`, `devolucion`, `ajuste`, `merma` |
 
 ## Modelo de datos
@@ -218,8 +255,8 @@ Todas las rutas empiezan con `/api`. Salvo las públicas, requieren el encabezad
 | `login_attempts` / `login_locks` | Intentos fallidos de inicio de sesión y bloqueos temporales |
 | `recipe_items` | Ingredientes y cantidades de cada plato |
 | `tables` | Las 30 mesas del salón |
-| `orders` | Pedidos: mesa, mesero, estado, total, motivo de cancelación |
-| `order_details` | Platos de cada pedido: cantidad, precio unitario y observación |
+| `orders` | Pedidos: código, mesa, mesero, estado, total, pagado (monto y fecha), motivo de cancelación |
+| `order_details` | Platos de cada pedido: cantidad, precio unitario, observación y estado en cocina |
 | `kitchen_tickets` | Comandas: estado y quién lo cambió |
 | `inventory_movements` | Historial de movimientos: ingrediente, tipo, cantidad, motivo, pedido y usuario |
 
@@ -259,7 +296,7 @@ src/
 ├── types/         # Enumeraciones y tipos
 ├── app.ts         # Configuración de Express
 └── index.ts       # Arranque del servidor
-test/              # Pruebas (api.test.ts, mail.test.ts)
+test/              # Pruebas (api.test.ts, sprint2.test.ts, mail.test.ts)
 ```
 
 ## Seguridad
@@ -278,7 +315,7 @@ test/              # Pruebas (api.test.ts, mail.test.ts)
 npm test
 ```
 
-Incluye pruebas de API (casos CP01 a CP38: login con correo y usuario, bloqueo por intentos fallidos, registro y permisos por rol, validación de ingredientes y de stock, entradas, movimientos y alertas, confirmación de correo) y pruebas del envío de correo con Brevo.
+Incluye pruebas de API (casos CP01 a CP107): login con correo y usuario, bloqueo por intentos fallidos, registro y permisos por rol, validación de ingredientes y de stock, entradas, movimientos y alertas, confirmación de correo. Un archivo aparte, `sprint2.test.ts`, reúne las pruebas del Sprint 2 (69 casos: carta, recetas, flujo de pedidos, comandas, cancelaciones e inventario). También hay pruebas del envío de correo con Brevo.
 
 Las pruebas de API **necesitan una base de datos separada**: defina `TEST_DATABASE_URL` en un archivo `.env.test` (no se sube al repositorio). Si apunta a la misma base que `DATABASE_URL`, las pruebas se detienen para proteger los datos reales.
 
@@ -315,16 +352,27 @@ Las pruebas de API **necesitan una base de datos separada**: defina `TEST_DATABA
 ## Cómo demostrar el Sprint 1
 
 1. Iniciar sesión como `admin`.
-2. Registrar un usuario nuevo con rol mesero (HU16) y revisar que pide confirmar el correo.
-3. Cerrar sesión e ingresar con ese usuario por nombre de usuario y por correo (HU01).
-4. Como admin, registrar un ingrediente de la parrilla, por ejemplo un corte de carne en `kg` (HU02).
-5. Registrar el stock inicial y una entrada posterior (HU03).
+2. Registrar un usuario nuevo con rol mesero y revisar que pide confirmar el correo.
+3. Cerrar sesión e ingresar con ese usuario por nombre de usuario y por correo.
+4. Como admin, registrar un ingrediente de la parrilla, por ejemplo un corte de carne en `kg`.
+5. Registrar el stock inicial y una entrada posterior.
 6. Consultar los movimientos y comprobar que quedaron el tipo, la cantidad y el usuario.
+
+## Cómo demostrar el Sprint 2
+
+1. Como `admin`, revisar la carta cargada: categorías, platos y la receta de uno de ellos.
+2. Registrar una entrada de stock para los ingredientes de ese plato .
+3. Como `mesero`, abrir un pedido en una mesa, agregar el plato con una observación (por ejemplo el término de cocción) y validar el stock.
+4. Confirmar el pedido. Comprobar que se creó la comanda y que el inventario se descontó.
+5. Como `cocinero`, cambiar el estado de la comanda y de un plato.
+6. Como `mesero`, enviar un plato adicional a la misma mesa, marcar el pago y cerrar el pedido.
+7. Como `admin`, consultar los movimientos filtrando por ingrediente y revisar las alertas de stock mínimo.
+8. Probar un caso de error: intentar confirmar un pedido sin stock suficiente, o cancelarlo sin motivo.
 
 ## Pendiente y limitaciones
 
-- Sprint 2 en curso: platos, recetas y apertura de pedidos están implementados; falta validarlos contra sus criterios de aceptación y la Definition of Done.
-- Los módulos de confirmación de pedido, comandas, descuento automático de inventario y alertas se validan formalmente en los siguientes sprints.
+- Las historias del Sprint 2 están implementadas y cubiertas por pruebas; su validación final contra los criterios de aceptación y la Definition of Done queda registrada en Trello.
+- Las pruebas de API requieren una base de datos de prueba separada configurada en `.env.test`.
 - El correo de verificación solo se envía si están configuradas las credenciales de Brevo; en una instalación local sin ellas, esa parte no funciona.
 
 ## Equipo
@@ -333,9 +381,9 @@ Las pruebas de API **necesitan una base de datos separada**: defina `TEST_DATABA
 |---|---|---|
 | Mateo Alejandro Goto Gusukuda | Product Owner | Gestión, priorización y validación del Product Backlog |
 | Alessandro Del Piero Chavarria Medina | Scrum Master / Developer | Facilitación de Scrum, seguimiento del tablero y README |
-| Isai Kaleb Arellano Koo | Developer | Desarrollo del backend y del frontend (código y base de datos) |
+| Isai Kaleb Arellano Koo | Developer | Desarrollo del backend y del frontend  |
 | Paul Marcelo Challco Peña | Integrator / UX-UI | Informe técnico y documentación |
-| Victor Samir Huallpa Alvites | Developer | Desarrollo; apoyo a Isai y a Mateo en distintas historias |
+| Victor Samir Huallpa Alvites | Developer | Pruebas del Sprint 2  y apoyo en desarrollo a Isai y a Mateo |
 
 ## Uso de herramientas de IA
 
