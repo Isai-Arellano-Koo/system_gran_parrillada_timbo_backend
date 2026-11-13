@@ -13,10 +13,11 @@ import {
 import { Op, type Transaction } from "sequelize";
 import { sequelize } from "../../config/database";
 import { AppError } from "../../middlewares/errorHandler";
-import type {
-  AttentionModality,
-  KitchenStatus,
-  UserRole,
+import {
+  isOffsiteModality,
+  type AttentionModality,
+  type KitchenStatus,
+  type UserRole,
 } from "../../types/enums";
 
 type DetailInput = {
@@ -34,39 +35,35 @@ type OpenOrderInput = {
   delivery_note?: string;
 };
 
-const limaDayMonth = () => {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "America/Lima",
-    day: "2-digit",
-    month: "2-digit",
-  }).formatToParts(new Date());
-  const day = parts.find((part) => part.type === "day")?.value || "00";
-  const month = parts.find((part) => part.type === "month")?.value || "00";
-  return `${day}${month}`;
-};
-
-const nextCode = async (prefix: string, t: Transaction) => {
-  const count = await Order.count({
+const nextNumberedCode = async (prefix: string, t: Transaction) => {
+  const rows = await Order.findAll({
     where: { code: { [Op.like]: `${prefix}%` } },
+    attributes: ["code"],
     transaction: t,
   });
-  for (let step = 1; step <= 20; step++) {
-    const code = `${prefix}${String(count + step).padStart(2, "0")}`;
+  let max = 0;
+  for (const row of rows) {
+    const value = Number(String(row.code).slice(prefix.length));
+    if (Number.isFinite(value) && value > max) max = value;
+  }
+  for (let step = 1; step <= 50; step++) {
+    const code = `${prefix}${max + step}`;
     const taken = await Order.findOne({ where: { code }, transaction: t });
     if (!taken) return code;
   }
-  return `${prefix}${Math.floor(Math.random() * 90 + 10)}`;
+  return `${prefix}${max + 1}`;
 };
 
-// Mesa + día/mes + correlativo del día. Ej: M01-2610-03
+// Ej: MESA 4-1, DEL-1, LLEVAR-1
 const generateTableOrderCode = async (tableNumber: number, t: Transaction) => {
-  const mesa = String(tableNumber).padStart(2, "0");
-  return nextCode(`M${mesa}-${limaDayMonth()}-`, t);
+  return nextNumberedCode(`MESA ${tableNumber}-`, t);
 };
 
-// Delivery + día/mes + correlativo. Ej: D-1311-01
-const generateDeliveryOrderCode = async (t: Transaction) => {
-  return nextCode(`D-${limaDayMonth()}-`, t);
+const generateOffsiteOrderCode = async (
+  modality: "delivery" | "para_llevar",
+  t: Transaction
+) => {
+  return nextNumberedCode(modality === "para_llevar" ? "LLEVAR-" : "DEL-", t);
 };
 
 // Trae el pedido con mesa, mesero, platos y comanda
@@ -256,30 +253,36 @@ export const openOrderController = async (
   userId: number,
   role: UserRole
 ) => {
-  const modality: AttentionModality =
-    data.modality === "delivery" ? "delivery" : "mesa";
+  const modality: AttentionModality = isOffsiteModality(data.modality)
+    ? (data.modality as AttentionModality)
+    : "mesa";
 
-  if (modality === "delivery") {
+  if (isOffsiteModality(modality)) {
     if (role !== "admin" && role !== "cajero") {
-      throw new AppError("Solo administración o caja abre un delivery", 403);
+      throw new AppError(
+        "Solo administración o caja abre un pedido para llevar o delivery",
+        403
+      );
     }
     const name = data.delivery_customer_name?.trim() || "";
     const phone = data.delivery_phone?.trim() || "";
     const address = data.delivery_address?.trim() || "";
     if (!name) throw new AppError("El nombre del cliente es obligatorio");
-    if (!phone) throw new AppError("El teléfono es obligatorio");
-    if (!address) throw new AppError("La dirección es obligatoria");
+    if (modality === "delivery") {
+      if (!phone) throw new AppError("El teléfono es obligatorio");
+      if (!address) throw new AppError("La dirección es obligatoria");
+    }
 
     const orderId = await sequelize.transaction(async (t) => {
       const order = await Order.create(
         {
-          code: await generateDeliveryOrderCode(t),
-          modality: "delivery",
+          code: await generateOffsiteOrderCode(modality, t),
+          modality,
           table_id: null,
           waiter_id: userId,
           delivery_customer_name: name,
-          delivery_phone: phone,
-          delivery_address: address,
+          delivery_phone: phone || null,
+          delivery_address: modality === "delivery" ? address : null,
           delivery_note: data.delivery_note?.trim() || null,
           status: "en_edicion",
           total: 0,
@@ -341,10 +344,16 @@ export const listOrdersController = async (
   role?: UserRole
 ) => {
   const where: Record<string, unknown> = {};
-  if (modality === "mesa" || modality === "delivery") {
+  if (modality === "offsite") {
+    where.modality = { [Op.in]: ["delivery", "para_llevar"] };
+  } else if (
+    modality === "mesa" ||
+    modality === "delivery" ||
+    modality === "para_llevar"
+  ) {
     where.modality = modality;
   } else if (role === "cajero") {
-    where.modality = "delivery";
+    where.modality = { [Op.in]: ["delivery", "para_llevar"] };
   }
 
   return Order.findAll({
@@ -797,8 +806,8 @@ export const closeOrderController = async (orderId: number) => {
   if (!order) throw new AppError("Pedido no encontrado", 404);
   if (order.status !== "confirmado") {
     throw new AppError(
-      order.modality === "delivery"
-        ? "Solo se cierra un delivery confirmado"
+      isOffsiteModality(order.modality)
+        ? "Solo se cierra un pedido confirmado"
         : "Solo se libera una mesa con pedido confirmado"
     );
   }
@@ -810,7 +819,7 @@ export const closeOrderController = async (orderId: number) => {
   }
   if (dueAmount(order) > 0.009) {
     throw new AppError(
-      order.modality === "delivery"
+      isOffsiteModality(order.modality)
         ? "El pedido tiene un saldo pendiente"
         : "La mesa tiene un saldo pendiente"
     );
