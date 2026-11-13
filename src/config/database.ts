@@ -79,6 +79,24 @@ export const connectDatabase = async () => {
   await sequelize.query(
     `ALTER TABLE order_details ADD COLUMN IF NOT EXISTS kitchen_status VARCHAR(32) NOT NULL DEFAULT 'pendiente'`
   );
+  await sequelize.query(
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS modality VARCHAR(16) NOT NULL DEFAULT 'mesa'`
+  );
+  await sequelize.query(
+    `ALTER TABLE orders ALTER COLUMN table_id DROP NOT NULL`
+  );
+  await sequelize.query(
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_customer_name VARCHAR(120)`
+  );
+  await sequelize.query(
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_phone VARCHAR(40)`
+  );
+  await sequelize.query(
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_address VARCHAR(255)`
+  );
+  await sequelize.query(
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_note TEXT`
+  );
   await sequelize.query(`
     UPDATE order_details d
     SET sent_to_kitchen = true

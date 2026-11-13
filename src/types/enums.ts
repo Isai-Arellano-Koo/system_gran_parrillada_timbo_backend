@@ -21,6 +21,9 @@ export const KITCHEN_STATUSES = [
 ] as const;
 export type KitchenStatus = (typeof KITCHEN_STATUSES)[number];
 
+export const ATTENTION_MODALITIES = ["mesa", "delivery"] as const;
+export type AttentionModality = (typeof ATTENTION_MODALITIES)[number];
+
 export const INVENTORY_MOVEMENT_TYPES = [
   "entrada",
   "salida_venta",

@@ -11,6 +11,7 @@ import {
   sendAdditionsHandler,
   setOrderPaidHandler,
   listOrdersHandler,
+  listSoldDishesHandler,
   getOrderHandler,
   listTablesHandler,
   seedTablesHandler,
@@ -25,41 +26,46 @@ router.use(authMiddleware); // pedidos solo con sesión
 router.get("/tables", listTablesHandler);
 router.post("/tables/seed", requireRoles("admin"), seedTablesHandler);
 
-router.get("/", requireRoles("mesero", "admin", "cocinero"), listOrdersHandler);
+router.get("/", requireRoles("mesero", "admin", "cocinero", "cajero"), listOrdersHandler);
+router.get(
+  "/sales",
+  requireRoles("admin", "cajero"),
+  listSoldDishesHandler
+);
 router.get(
   "/:orderId",
-  requireRoles("mesero", "admin", "cocinero"),
+  requireRoles("mesero", "admin", "cocinero", "cajero"),
   getOrderHandler
 );
-router.post("/", requireRoles("mesero", "admin"), openOrderHandler);
+router.post("/", requireRoles("mesero", "admin", "cajero"), openOrderHandler);
 router.post(
   "/:orderId/details",
-  requireRoles("mesero", "admin"),
+  requireRoles("mesero", "admin", "cajero"),
   addOrderDetailHandler
 );
 router.patch(
   "/:orderId/details/:detailId",
-  requireRoles("mesero", "admin"),
+  requireRoles("mesero", "admin", "cajero"),
   updateOrderDetailHandler
 );
 router.delete(
   "/:orderId/details/:detailId",
-  requireRoles("mesero", "admin"),
+  requireRoles("mesero", "admin", "cajero"),
   removeOrderDetailHandler
 );
 router.post(
   "/:orderId/validate-stock",
-  requireRoles("mesero", "admin"),
+  requireRoles("mesero", "admin", "cajero"),
   validateStockHandler
 );
 router.post(
   "/:orderId/confirm",
-  requireRoles("mesero", "admin"),
+  requireRoles("mesero", "admin", "cajero"),
   confirmOrderHandler
 );
 router.post(
   "/:orderId/additions",
-  requireRoles("mesero", "admin"),
+  requireRoles("mesero", "admin", "cajero"),
   sendAdditionsHandler
 );
 router.patch(
@@ -69,12 +75,12 @@ router.patch(
 );
 router.post(
   "/:orderId/close",
-  requireRoles("mesero", "admin"),
+  requireRoles("mesero", "admin", "cajero"),
   closeOrderHandler
 );
 router.post(
   "/:orderId/cancel",
-  requireRoles("admin", "mesero"),
+  requireRoles("admin", "mesero", "cajero"),
   cancelOrderHandler
 );
 

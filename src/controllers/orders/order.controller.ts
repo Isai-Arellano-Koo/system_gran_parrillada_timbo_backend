@@ -13,12 +13,25 @@ import {
 import { Op, type Transaction } from "sequelize";
 import { sequelize } from "../../config/database";
 import { AppError } from "../../middlewares/errorHandler";
-import type { KitchenStatus } from "../../types/enums";
+import type {
+  AttentionModality,
+  KitchenStatus,
+  UserRole,
+} from "../../types/enums";
 
 type DetailInput = {
   dish_id?: number;
   quantity?: number;
   observation?: string;
+};
+
+type OpenOrderInput = {
+  table_id?: number;
+  modality?: string;
+  delivery_customer_name?: string;
+  delivery_phone?: string;
+  delivery_address?: string;
+  delivery_note?: string;
 };
 
 const limaDayMonth = () => {
@@ -32,10 +45,7 @@ const limaDayMonth = () => {
   return `${day}${month}`;
 };
 
-// Mesa + día/mes + correlativo del día. Ej: M01-2610-03
-const generateOrderCode = async (tableNumber: number, t: Transaction) => {
-  const mesa = String(tableNumber).padStart(2, "0");
-  const prefix = `M${mesa}-${limaDayMonth()}-`;
+const nextCode = async (prefix: string, t: Transaction) => {
   const count = await Order.count({
     where: { code: { [Op.like]: `${prefix}%` } },
     transaction: t,
@@ -46,6 +56,17 @@ const generateOrderCode = async (tableNumber: number, t: Transaction) => {
     if (!taken) return code;
   }
   return `${prefix}${Math.floor(Math.random() * 90 + 10)}`;
+};
+
+// Mesa + día/mes + correlativo del día. Ej: M01-2610-03
+const generateTableOrderCode = async (tableNumber: number, t: Transaction) => {
+  const mesa = String(tableNumber).padStart(2, "0");
+  return nextCode(`M${mesa}-${limaDayMonth()}-`, t);
+};
+
+// Delivery + día/mes + correlativo. Ej: D-1311-01
+const generateDeliveryOrderCode = async (t: Transaction) => {
+  return nextCode(`D-${limaDayMonth()}-`, t);
 };
 
 // Trae el pedido con mesa, mesero, platos y comanda
@@ -230,7 +251,51 @@ export const seedTablesController = async (count = 30) => {
   return Table.findAll({ order: [["number", "ASC"]] });
 };
 
-export const openOrderController = async (tableId: number, waiterId: number) => {
+export const openOrderController = async (
+  data: OpenOrderInput,
+  userId: number,
+  role: UserRole
+) => {
+  const modality: AttentionModality =
+    data.modality === "delivery" ? "delivery" : "mesa";
+
+  if (modality === "delivery") {
+    if (role !== "admin" && role !== "cajero") {
+      throw new AppError("Solo administración o caja abre un delivery", 403);
+    }
+    const name = data.delivery_customer_name?.trim() || "";
+    const phone = data.delivery_phone?.trim() || "";
+    const address = data.delivery_address?.trim() || "";
+    if (!name) throw new AppError("El nombre del cliente es obligatorio");
+    if (!phone) throw new AppError("El teléfono es obligatorio");
+    if (!address) throw new AppError("La dirección es obligatoria");
+
+    const orderId = await sequelize.transaction(async (t) => {
+      const order = await Order.create(
+        {
+          code: await generateDeliveryOrderCode(t),
+          modality: "delivery",
+          table_id: null,
+          waiter_id: userId,
+          delivery_customer_name: name,
+          delivery_phone: phone,
+          delivery_address: address,
+          delivery_note: data.delivery_note?.trim() || null,
+          status: "en_edicion",
+          total: 0,
+        },
+        { transaction: t }
+      );
+      return order.id;
+    });
+    return loadOrder(orderId);
+  }
+
+  if (role !== "admin" && role !== "mesero") {
+    throw new AppError("Solo el mesero o el administrador abre un pedido de mesa", 403);
+  }
+
+  const tableId = Number(data.table_id);
   if (!tableId) throw new AppError("Debe seleccionar una mesa");
 
   const orderId = await sequelize.transaction(async (t) => {
@@ -256,9 +321,10 @@ export const openOrderController = async (tableId: number, waiterId: number) => 
 
     const order = await Order.create(
       {
-        code: await generateOrderCode(table.number, t),
+        code: await generateTableOrderCode(table.number, t),
+        modality: "mesa",
         table_id: tableId,
-        waiter_id: waiterId,
+        waiter_id: userId,
         status: "en_edicion",
         total: 0,
       },
@@ -270,8 +336,19 @@ export const openOrderController = async (tableId: number, waiterId: number) => 
   return loadOrder(orderId);
 };
 
-export const listOrdersController = async () => {
+export const listOrdersController = async (
+  modality?: string,
+  role?: UserRole
+) => {
+  const where: Record<string, unknown> = {};
+  if (modality === "mesa" || modality === "delivery") {
+    where.modality = modality;
+  } else if (role === "cajero") {
+    where.modality = "delivery";
+  }
+
   return Order.findAll({
+    where,
     include: [
       { model: Table, as: "table" },
       { model: User, as: "waiter", attributes: ["id", "name"] },
@@ -283,6 +360,50 @@ export const listOrdersController = async () => {
       { model: KitchenTicket, as: "kitchen_ticket" },
     ],
     order: [["created_at", "DESC"]],
+  });
+};
+
+export const listSoldDishesController = async () => {
+  const details = await OrderDetail.findAll({
+    include: [
+      {
+        model: Order,
+        as: "order",
+        required: true,
+        where: { status: { [Op.in]: ["confirmado", "cerrado"] } },
+        attributes: [
+          "id",
+          "code",
+          "modality",
+          "table_id",
+          "confirmed_at",
+          "created_at",
+        ],
+        include: [{ model: Table, as: "table", attributes: ["id", "number"] }],
+      },
+      { model: Dish, as: "dish", attributes: ["id", "name", "presentation"] },
+    ],
+    order: [["id", "DESC"]],
+  });
+
+  return details.map((detail) => {
+    const order = detail.get("order") as Order;
+    const dish = detail.get("dish") as Dish | undefined;
+    const table = order.get("table") as Table | undefined;
+    return {
+      id: detail.id,
+      dish_id: detail.dish_id,
+      dish_name: dish?.name || `Plato ${detail.dish_id}`,
+      presentation: dish?.presentation || "",
+      quantity: Number(detail.quantity),
+      unit_price: Number(detail.unit_price),
+      total: Number(detail.unit_price) * Number(detail.quantity),
+      order_id: order.id,
+      order_code: order.code,
+      modality: order.modality || "mesa",
+      table_number: table?.number ?? null,
+      sold_at: order.confirmed_at || order.created_at,
+    };
   });
 };
 
@@ -531,7 +652,7 @@ export const sendAdditionsController = async (orderId: number) => {
     });
     if (!order) throw new AppError("Pedido no encontrado", 404);
     if (order.status !== "confirmado") {
-      throw new AppError("Solo se envían adicionales de un pedido en mesa");
+      throw new AppError("Solo se envían adicionales de un pedido confirmado");
     }
 
     const pending = await OrderDetail.findAll({
@@ -572,7 +693,7 @@ export const setOrderPaidController = async (orderId: number, paid: boolean) => 
   const order = await Order.findByPk(orderId);
   if (!order) throw new AppError("Pedido no encontrado", 404);
   if (order.status !== "confirmado") {
-    throw new AppError("Solo se registra el pago de una mesa ocupada");
+    throw new AppError("Solo se registra el pago de un pedido confirmado");
   }
   if (paid) {
     order.amount_paid = Number(order.total);
@@ -675,7 +796,11 @@ export const closeOrderController = async (orderId: number) => {
   const order = await Order.findByPk(orderId);
   if (!order) throw new AppError("Pedido no encontrado", 404);
   if (order.status !== "confirmado") {
-    throw new AppError("Solo se libera una mesa con pedido confirmado");
+    throw new AppError(
+      order.modality === "delivery"
+        ? "Solo se cierra un delivery confirmado"
+        : "Solo se libera una mesa con pedido confirmado"
+    );
   }
   const pending = await OrderDetail.count({
     where: { order_id: orderId, sent_to_kitchen: false },
@@ -684,7 +809,11 @@ export const closeOrderController = async (orderId: number) => {
     throw new AppError("Hay platos nuevos sin enviar a cocina");
   }
   if (dueAmount(order) > 0.009) {
-    throw new AppError("La mesa tiene un saldo pendiente");
+    throw new AppError(
+      order.modality === "delivery"
+        ? "El pedido tiene un saldo pendiente"
+        : "La mesa tiene un saldo pendiente"
+    );
   }
   order.status = "cerrado";
   order.closed_at = new Date();

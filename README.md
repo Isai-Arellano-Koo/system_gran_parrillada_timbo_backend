@@ -178,9 +178,10 @@ Todas las rutas empiezan con `/api`. Salvo las públicas, requieren el encabezad
 |---|---|---|---|
 | GET | `/api/orders/tables` | Lista mesas | Autenticado |
 | POST | `/api/orders/tables/seed` | Crea las mesas | admin |
-| GET | `/api/orders` | Lista pedidos | mesero, admin, cocinero |
-| GET | `/api/orders/:orderId` | Detalle del pedido | mesero, admin, cocinero |
-| POST | `/api/orders` | Abre un pedido para una mesa | mesero, admin |
+| GET | `/api/orders` | Lista pedidos (`?modality=mesa\|delivery`) | mesero, admin, cocinero, cajero |
+| GET | `/api/orders/sales` | Historial de platos vendidos | admin, cajero |
+| GET | `/api/orders/:orderId` | Detalle del pedido | mesero, admin, cocinero, cajero |
+| POST | `/api/orders` | Abre un pedido de mesa o delivery | mesero, admin, cajero |
 | POST | `/api/orders/:orderId/details` | Agrega plato, cantidad y observación | mesero, admin |
 | PATCH | `/api/orders/:orderId/details/:detailId` | Modifica cantidad u observación de un plato | mesero, admin |
 | DELETE | `/api/orders/:orderId/details/:detailId` | Elimina un detalle | mesero, admin |
@@ -200,7 +201,8 @@ Todas las rutas empiezan con `/api`. Salvo las públicas, requieren el encabezad
 | Concepto | Valores |
 |---|---|
 | Unidades de medida | `kg`, `g`, `lt`, `ml`, `unidad` |
-| Estado del pedido | `en_edicion`, `confirmado`, `cancelado` |
+| Estado del pedido | `en_edicion`, `confirmado`, `cerrado`, `cancelado` |
+| Modalidad de atención | `mesa`, `delivery` |
 | Estado de la comanda | `pendiente`, `en_preparacion`, `listo`, `entregado` |
 | Tipos de movimiento de inventario | `entrada`, `salida_venta`, `devolucion`, `ajuste`, `merma` |
 

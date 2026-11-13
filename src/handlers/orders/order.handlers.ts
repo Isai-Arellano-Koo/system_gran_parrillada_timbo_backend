@@ -11,6 +11,7 @@ import {
   sendAdditionsController,
   setOrderPaidController,
   listOrdersController,
+  listSoldDishesController,
   getOrderController,
   listTablesController,
   seedTablesController,
@@ -43,8 +44,16 @@ export const listTablesHandler = (_req: Request, res: Response) =>
 export const seedTablesHandler = (_req: Request, res: Response) =>
   handle(res, () => seedTablesController(30), 201);
 
-export const listOrdersHandler = (_req: Request, res: Response) =>
-  handle(res, () => listOrdersController());
+export const listOrdersHandler = (req: Request, res: Response) =>
+  handle(res, () =>
+    listOrdersController(
+      typeof req.query.modality === "string" ? req.query.modality : undefined,
+      req.user?.role
+    )
+  );
+
+export const listSoldDishesHandler = (_req: Request, res: Response) =>
+  handle(res, () => listSoldDishesController());
 
 export const getOrderHandler = (req: Request, res: Response) =>
   handle(res, () => getOrderController(Number(req.params.orderId)));
@@ -52,7 +61,7 @@ export const getOrderHandler = (req: Request, res: Response) =>
 export const openOrderHandler = (req: Request, res: Response) =>
   handle(
     res,
-    () => openOrderController(Number(req.body.table_id), req.user!.id),
+    () => openOrderController(req.body || {}, req.user!.id, req.user!.role),
     201
   );
 
