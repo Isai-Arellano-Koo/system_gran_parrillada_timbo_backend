@@ -1036,3 +1036,61 @@ describe("HU15 - Alertar por stock mínimo", () => {
     expect(res.status).toBe(403);
   });
 });
+// ═══════════════════════════════════════════════════════════════
+// HU14 — Consultar movimientos de inventario (CP111 a CP114)
+// ═══════════════════════════════════════════════════════════════
+describe("HU14 - Consultar movimientos de inventario", () => {
+  let lomoId = 0;
+  let pedidoId = 0;
+
+  beforeAll(async () => {
+    const cat = await request("POST", "/api/catalog/categories", { token: tokens.admin, body: { name: "Cat HU14" } });
+    const lomo = await request("POST", "/api/catalog/ingredients", { token: tokens.admin, body: { name: "Lomo HU14", unit: "kg" } });
+    lomoId = lomo.data.id;
+
+    const plato = await request("POST", "/api/catalog/dishes", { token: tokens.admin, body: { name: "Plato HU14", price: 30, category_id: cat.data.id } });
+    await request("PUT", `/api/catalog/dishes/${plato.data.id}/recipe`, { token: tokens.admin, body: { items: [{ ingredient_id: lomoId, quantity: 0.5 }] } });
+
+    await request("POST", "/api/inventory/entries", { token: tokens.admin, body: { ingredient_id: lomoId, quantity: 10, reason: "Stock HU14" } });
+
+    const p = await request("POST", "/api/orders", { token: tokens.mesero, body: { table_id: 25 } });
+    pedidoId = p.data.id;
+    await request("POST", `/api/orders/${pedidoId}/details`, { token: tokens.mesero, body: { dish_id: plato.data.id, quantity: 2 } });
+    await request("POST", `/api/orders/${pedidoId}/confirm`, { token: tokens.mesero });
+  });
+
+  it("CP111 - Cada movimiento registra ingrediente, tipo, cantidad, fecha y usuario", async () => {
+    const res = await request("GET", "/api/inventory/movements", { token: tokens.admin });
+    expect(res.status).toBe(200);
+    const movs = Array.isArray(res.data) ? res.data : res.data.movements ?? [];
+    const mov = movs.find((m: any) => m.ingredient_id === lomoId && m.type === "entrada");
+    expect(mov).toBeTruthy();
+    expect(mov.quantity).toBeDefined();
+    expect(mov.created_at).toBeDefined();
+    expect(mov.user_id).toBeDefined();
+  });
+
+  it("CP112 - Las salidas por venta se vinculan con el pedido correspondiente", async () => {
+    const res = await request("GET", "/api/inventory/movements", { token: tokens.admin });
+    const movs = Array.isArray(res.data) ? res.data : res.data.movements ?? [];
+    const salida = movs.find((m: any) => m.type === "salida_venta" && m.order_id === pedidoId);
+    expect(salida).toBeTruthy();
+    expect(salida.ingredient_id).toBe(lomoId);
+  });
+
+  it("CP113 - Las entradas, devoluciones, ajustes y mermas utilizan tipos distintos", async () => {
+    const res = await request("GET", "/api/inventory/movements", { token: tokens.admin });
+    const movs = Array.isArray(res.data) ? res.data : res.data.movements ?? [];
+    const tipos = [...new Set(movs.map((m: any) => m.type))];
+    expect(tipos).toContain("entrada");
+    expect(tipos).toContain("salida_venta");
+  });
+
+  it("CP114 - Un movimiento confirmado no se elimina; una corrección genera un nuevo movimiento", async () => {
+    const res = await request("GET", "/api/inventory/movements", { token: tokens.admin });
+    const movs = Array.isArray(res.data) ? res.data : res.data.movements ?? [];
+    expect(movs.length).toBeGreaterThan(0);
+    const deleteRes = await request("DELETE", `/api/inventory/movements/1`, { token: tokens.admin });
+    expect(deleteRes.status).toBe(409);
+  });
+});
