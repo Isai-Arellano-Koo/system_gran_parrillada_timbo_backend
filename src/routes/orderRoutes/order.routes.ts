@@ -17,6 +17,10 @@ import {
   getOrderHandler,
   listTablesHandler,
   seedTablesHandler,
+  setTableActiveHandler,
+  groupTablesHandler,
+  ungroupTablesHandler,
+  listTableChangesHandler,
 } from "../../handlers/orders/order.handlers";
 import { authMiddleware } from "../../middlewares/authMiddleware";
 import { requireRoles } from "../../middlewares/roleMiddleware";
@@ -27,6 +31,26 @@ router.use(authMiddleware); // pedidos solo con sesión
 
 router.get("/tables", listTablesHandler);
 router.post("/tables/seed", requireRoles("admin"), seedTablesHandler);
+router.get(
+  "/tables/changes",
+  requireRoles("admin"),
+  listTableChangesHandler
+);
+router.post(
+  "/tables/groups",
+  requireRoles("admin", "mesero"),
+  groupTablesHandler
+);
+router.delete(
+  "/tables/groups/:groupId",
+  requireRoles("admin"),
+  ungroupTablesHandler
+);
+router.patch(
+  "/tables/:tableId",
+  requireRoles("admin"),
+  setTableActiveHandler
+);
 
 router.get("/", requireRoles("mesero", "admin", "cocinero", "cajero"), listOrdersHandler);
 router.post(

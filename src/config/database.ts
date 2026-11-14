@@ -124,6 +124,46 @@ export const connectDatabase = async () => {
       )
   `);
   await sequelize.query(`
+    CREATE TABLE IF NOT EXISTS table_groups (
+      id SERIAL PRIMARY KEY,
+      created_by INTEGER NOT NULL REFERENCES users(id),
+      created_at TIMESTAMP WITH TIME ZONE,
+      updated_at TIMESTAMP WITH TIME ZONE
+    )
+  `);
+  await sequelize.query(`
+    CREATE TABLE IF NOT EXISTS table_group_members (
+      id SERIAL PRIMARY KEY,
+      group_id INTEGER NOT NULL REFERENCES table_groups(id) ON DELETE CASCADE,
+      table_id INTEGER NOT NULL UNIQUE REFERENCES tables(id),
+      created_at TIMESTAMP WITH TIME ZONE,
+      updated_at TIMESTAMP WITH TIME ZONE
+    )
+  `);
+  await sequelize.query(`
+    CREATE TABLE IF NOT EXISTS table_status_changes (
+      id SERIAL PRIMARY KEY,
+      table_id INTEGER NOT NULL REFERENCES tables(id),
+      previous_is_active BOOLEAN NOT NULL,
+      next_is_active BOOLEAN NOT NULL,
+      reason VARCHAR(255) NOT NULL,
+      changed_by INTEGER NOT NULL REFERENCES users(id),
+      created_at TIMESTAMP WITH TIME ZONE,
+      updated_at TIMESTAMP WITH TIME ZONE
+    )
+  `);
+  await sequelize.query(`
+    CREATE TABLE IF NOT EXISTS table_group_changes (
+      id SERIAL PRIMARY KEY,
+      group_id INTEGER,
+      action VARCHAR(20) NOT NULL,
+      table_ids VARCHAR(255) NOT NULL,
+      changed_by INTEGER NOT NULL REFERENCES users(id),
+      created_at TIMESTAMP WITH TIME ZONE,
+      updated_at TIMESTAMP WITH TIME ZONE
+    )
+  `);
+  await sequelize.query(`
     UPDATE order_details d
     SET sent_to_kitchen = true
     FROM orders o

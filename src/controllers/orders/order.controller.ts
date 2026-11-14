@@ -9,8 +9,14 @@ import {
   OrderDetail,
   RecipeItem,
   Table,
+  TableGroupMember,
   User,
 } from "../../models";
+import {
+  mergeIntoGroup,
+  tableIdsInSameGroup,
+  ungroupTablesController,
+} from "./tables.controller";
 import { Op, type Transaction } from "sequelize";
 import { sequelize } from "../../config/database";
 import { AppError } from "../../middlewares/errorHandler";
@@ -298,40 +304,6 @@ const consumeRequired = async (
   }
 };
 
-export const listTablesController = async () => {
-  const count = await Table.count();
-  // Si no hay mesas, crea 30 para poder abrir pedidos
-  if (count === 0) {
-    await Table.bulkCreate(
-      Array.from({ length: 30 }, (_, i) => ({
-        number: i + 1,
-        capacity: 4,
-        is_active: true,
-      }))
-    );
-  }
-
-  return Table.findAll({
-    where: { is_active: true },
-    order: [["number", "ASC"]],
-  });
-};
-
-export const seedTablesController = async (count = 30) => {
-  const existing = await Table.count();
-  if (existing > 0) {
-    return Table.findAll({ order: [["number", "ASC"]] });
-  }
-
-  const rows = Array.from({ length: count }, (_, i) => ({
-    number: i + 1,
-    capacity: 4,
-    is_active: true,
-  }));
-  await Table.bulkCreate(rows);
-  return Table.findAll({ order: [["number", "ASC"]] });
-};
-
 const resolveOpenModality = (data: OpenOrderInput): AttentionModality => {
   if (isOffsiteModality(data.modality)) {
     return data.modality as AttentionModality;
@@ -404,9 +376,12 @@ export const openOrderController = async (
       throw new AppError("Mesa no válida", 404);
     }
 
-    const open = await findOpenOrderByTable(tableId, t);
-    if (open) {
-      throw new AppError("La mesa sigue ocupada");
+    const groupIds = await tableIdsInSameGroup(tableId, t);
+    for (const id of groupIds) {
+      const open = await findOpenOrderByTable(id, t);
+      if (open) {
+        throw new AppError("La mesa sigue ocupada");
+      }
     }
 
     const order = await Order.create(
@@ -420,7 +395,9 @@ export const openOrderController = async (
       },
       { transaction: t }
     );
-    await linkTableToOrder(order.id, tableId, t);
+    for (const id of groupIds) {
+      await linkTableToOrder(order.id, id, t);
+    }
     return order.id;
   });
 
@@ -458,100 +435,48 @@ export const joinTablesController = async (
 
     const fromOrder = await findOpenOrderByTable(fromId, t);
     const toOrder = await findOpenOrderByTable(toId, t);
-
-    if (fromOrder && toOrder && fromOrder.id === toOrder.id) {
-      return fromOrder.id;
-    }
-
-    if (!fromOrder && !toOrder) {
-      const host = first.number <= second.number ? first : second;
-      const guest = host.id === first.id ? second : first;
-      const order = await Order.create(
-        {
-          code: await generateTableOrderCode(host.number, t),
-          modality: "mesa",
-          table_id: host.id,
-          waiter_id: userId,
-          status: "en_edicion",
-          total: 0,
-        },
-        { transaction: t }
-      );
-      await linkTableToOrder(order.id, host.id, t);
-      await linkTableToOrder(order.id, guest.id, t);
-      return order.id;
-    }
-
-    if (fromOrder && !toOrder) {
-      await linkTableToOrder(fromOrder.id, toId, t);
-      await refreshHostTable(fromOrder, t);
-      return fromOrder.id;
-    }
-
-    if (!fromOrder && toOrder) {
-      await linkTableToOrder(toOrder.id, fromId, t);
-      await refreshHostTable(toOrder, t);
-      return toOrder.id;
-    }
-
-    if (fromOrder!.status !== "en_edicion") {
+    if (fromOrder || toOrder) {
       throw new AppError(
-        "Esa mesa ya envió a cocina. Únela a una mesa libre o únela antes de confirmar."
+        "Hay un pedido abierto en esa mesa. Ciérralo o libéralo antes de agrupar"
       );
     }
 
-    await OrderDetail.update(
-      { order_id: toOrder!.id },
-      { where: { order_id: fromOrder!.id }, transaction: t }
+    await mergeIntoGroup([fromId, toId], userId, t);
+    const memberIds = await tableIdsInSameGroup(fromId, t);
+    const host =
+      first.number <= second.number ? first : second;
+    const order = await Order.create(
+      {
+        code: await generateTableOrderCode(host.number, t),
+        modality: "mesa",
+        table_id: host.id,
+        waiter_id: userId,
+        status: "en_edicion",
+        total: 0,
+      },
+      { transaction: t }
     );
-    const sourceLinks = await OrderTable.findAll({
-      where: { order_id: fromOrder!.id },
-      transaction: t,
-    });
-    for (const link of sourceLinks) {
-      await linkTableToOrder(toOrder!.id, link.table_id, t);
-      await link.destroy({ transaction: t });
+    for (const id of memberIds.length ? memberIds : [fromId, toId]) {
+      await linkTableToOrder(order.id, id, t);
     }
-    fromOrder!.status = "cancelado";
-    fromOrder!.cancel_reason = "Unión de mesas";
-    fromOrder!.cancelled_at = new Date();
-    await fromOrder!.save({ transaction: t });
-    await recalcOrderTotal(toOrder!, t);
-    await refreshHostTable(toOrder!, t);
-    return toOrder!.id;
+    return order.id;
   });
 
   return loadOrder(orderId);
 };
 
-export const splitTableController = async (tableId: number, role: UserRole) => {
-  if (role !== "admin" && role !== "mesero") {
-    throw new AppError("Solo el mesero o el administrador separa mesas", 403);
-  }
-  const id = Number(tableId);
-  if (!id) throw new AppError("Elige la mesa a separar");
-
-  const orderId = await sequelize.transaction(async (t) => {
-    const table = await Table.findByPk(id, {
-      transaction: t,
-      lock: t.LOCK.UPDATE,
-    });
-    if (!table) throw new AppError("Mesa no válida", 404);
-    const order = await findOpenOrderByTable(id, t);
-    if (!order) throw new AppError("Esa mesa no está en un pedido");
-    const tables = await linkedTables(order.id, t);
-    if (tables.length <= 1) {
-      throw new AppError("No se puede separar la única mesa del pedido");
-    }
-    await OrderTable.destroy({
-      where: { order_id: order.id, table_id: id },
-      transaction: t,
-    });
-    await refreshHostTable(order, t);
-    return order.id;
+export const splitTableController = async (
+  tableId: number,
+  userId: number,
+  role: UserRole
+): Promise<
+  Awaited<ReturnType<typeof ungroupTablesController>>
+> => {
+  const member = await TableGroupMember.findOne({
+    where: { table_id: Number(tableId) },
   });
-
-  return loadOrder(orderId);
+  if (!member) throw new AppError("Esa mesa no está agrupada");
+  return ungroupTablesController(member.group_id, userId, role);
 };
 
 export const listOrdersController = async (

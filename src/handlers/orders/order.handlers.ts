@@ -15,9 +15,15 @@ import {
   listOrdersController,
   listSoldDishesController,
   getOrderController,
+} from "../../controllers/orders/order.controller";
+import {
   listTablesController,
   seedTablesController,
-} from "../../controllers/orders/order.controller";
+  setTableActiveController,
+  groupTablesController,
+  ungroupTablesController,
+  listTableChangesController,
+} from "../../controllers/orders/tables.controller";
 import { AppError } from "../../middlewares/errorHandler";
 
 const handle = async (
@@ -40,8 +46,8 @@ const handle = async (
   }
 };
 
-export const listTablesHandler = (_req: Request, res: Response) =>
-  handle(res, () => listTablesController());
+export const listTablesHandler = (req: Request, res: Response) =>
+  handle(res, () => listTablesController(req.user?.role));
 
 export const seedTablesHandler = (_req: Request, res: Response) =>
   handle(res, () => seedTablesController(30), 201);
@@ -79,8 +85,44 @@ export const joinTablesHandler = (req: Request, res: Response) =>
 
 export const splitTableHandler = (req: Request, res: Response) =>
   handle(res, () =>
-    splitTableController(Number(req.body?.table_id), req.user!.role)
+    splitTableController(
+      Number(req.body?.table_id),
+      req.user!.id,
+      req.user!.role
+    )
   );
+
+export const setTableActiveHandler = (req: Request, res: Response) =>
+  handle(res, () =>
+    setTableActiveController(
+      Number(req.params.tableId),
+      req.body?.is_active,
+      String(req.body?.reason || ""),
+      req.user!.id,
+      req.user!.role
+    )
+  );
+
+export const groupTablesHandler = (req: Request, res: Response) =>
+  handle(res, () =>
+    groupTablesController(
+      Array.isArray(req.body?.table_ids) ? req.body.table_ids : [],
+      req.user!.id,
+      req.user!.role
+    )
+  );
+
+export const ungroupTablesHandler = (req: Request, res: Response) =>
+  handle(res, () =>
+    ungroupTablesController(
+      Number(req.params.groupId),
+      req.user!.id,
+      req.user!.role
+    )
+  );
+
+export const listTableChangesHandler = (req: Request, res: Response) =>
+  handle(res, () => listTableChangesController(req.user!.role));
 
 export const addOrderDetailHandler = (req: Request, res: Response) =>
   handle(

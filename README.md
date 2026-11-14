@@ -39,6 +39,7 @@ Qué historias entraron en cada sprint y su estado de validación se registran e
 | HU14 | Consultar movimientos de inventario | `GET /api/inventory/movements` |
 | HU15 | Alertar por stock mínimo | `GET /api/inventory/alerts` |
 | HU17 | Registrar ajustes de inventario | `POST /api/inventory/adjustments` |
+| HU18 | Gestionar y unir mesas | `PATCH /api/orders/tables/:tableId`, `POST /api/orders/tables/groups`, `POST /api/orders/join-tables` |
 
 ### Reglas de negocio que implementa el flujo del pedido
 
@@ -205,12 +206,17 @@ Todas las rutas empiezan con `/api`. Salvo las públicas, requieren el encabezad
 | DELETE | `/api/inventory/movements/:id` | Siempre se rechaza: los movimientos no se borran |
 | GET | `/api/inventory/alerts` | Ingredientes en stock mínimo |
 
-**Pedidos (HU06 a HU09, HU12 y HU13)**
+**Pedidos (HU06 a HU09, HU12, HU13 y HU18)**
 
 | Método | Ruta | Descripción | Acceso |
 |---|---|---|---|
-| GET | `/api/orders/tables` | Lista mesas | Autenticado |
+| GET | `/api/orders/tables` | Lista mesas (el mesero solo ve las habilitadas) | Autenticado |
 | POST | `/api/orders/tables/seed` | Crea las mesas | admin |
+| GET | `/api/orders/tables/changes` | Historial de habilitar, inhabilitar y agrupar | admin |
+| POST | `/api/orders/tables/groups` | Agrupa mesas libres (sin abrir pedido) | admin, mesero |
+| DELETE | `/api/orders/tables/groups/:groupId` | Separa un grupo de mesas libres | admin |
+| PATCH | `/api/orders/tables/:tableId` | Habilita o inhabilita una mesa con motivo | admin |
+| POST | `/api/orders/join-tables` | Une mesas libres y abre un pedido para el grupo | mesero, admin |
 | GET | `/api/orders` | Lista pedidos (`?modality=mesa\|delivery`) | mesero, admin, cocinero, cajero |
 | GET | `/api/orders/sales` | Historial de platos vendidos | admin, cajero |
 | GET | `/api/orders/:orderId` | Detalle del pedido | mesero, admin, cocinero, cajero |

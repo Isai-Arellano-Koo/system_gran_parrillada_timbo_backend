@@ -4,6 +4,10 @@ import { Category } from "./Category";
 import { Dish } from "./Dish";
 import { RecipeItem } from "./RecipeItem";
 import { Table } from "./Table";
+import { TableGroup } from "./TableGroup";
+import { TableGroupMember } from "./TableGroupMember";
+import { TableStatusChange } from "./TableStatusChange";
+import { TableGroupChange } from "./TableGroupChange";
 import { Order } from "./Order";
 import { OrderTable } from "./OrderTable";
 import { OrderDetail } from "./OrderDetail";
@@ -57,6 +61,40 @@ OrderTable.belongsTo(Order, { foreignKey: "order_id", as: "order" });
 OrderTable.belongsTo(Table, { foreignKey: "table_id", as: "table" });
 Order.hasMany(OrderTable, { foreignKey: "order_id", as: "table_links" });
 Table.hasMany(OrderTable, { foreignKey: "table_id", as: "order_links" });
+
+TableGroup.hasMany(TableGroupMember, {
+  foreignKey: "group_id",
+  as: "members",
+  onDelete: "CASCADE",
+});
+TableGroupMember.belongsTo(TableGroup, { foreignKey: "group_id", as: "group" });
+Table.hasOne(TableGroupMember, { foreignKey: "table_id", as: "group_member" });
+TableGroupMember.belongsTo(Table, { foreignKey: "table_id", as: "table" });
+User.hasMany(TableGroup, { foreignKey: "created_by", as: "table_groups" });
+TableGroup.belongsTo(User, { foreignKey: "created_by", as: "created_by_user" });
+
+Table.hasMany(TableStatusChange, {
+  foreignKey: "table_id",
+  as: "status_changes",
+});
+TableStatusChange.belongsTo(Table, { foreignKey: "table_id", as: "table" });
+User.hasMany(TableStatusChange, {
+  foreignKey: "changed_by",
+  as: "table_status_changes_made",
+});
+TableStatusChange.belongsTo(User, {
+  foreignKey: "changed_by",
+  as: "changed_by_user",
+});
+
+User.hasMany(TableGroupChange, {
+  foreignKey: "changed_by",
+  as: "table_group_changes_made",
+});
+TableGroupChange.belongsTo(User, {
+  foreignKey: "changed_by",
+  as: "changed_by_user",
+});
 
 User.hasMany(Order, { foreignKey: "waiter_id", as: "orders" });
 Order.belongsTo(User, { foreignKey: "waiter_id", as: "waiter" });
@@ -142,6 +180,10 @@ export {
   Dish,
   RecipeItem,
   Table,
+  TableGroup,
+  TableGroupMember,
+  TableStatusChange,
+  TableGroupChange,
   Order,
   OrderTable,
   OrderDetail,
