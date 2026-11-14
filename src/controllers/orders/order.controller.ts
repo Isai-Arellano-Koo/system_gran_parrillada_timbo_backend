@@ -588,7 +588,22 @@ export const listOrdersController = async (
   });
 };
 
-export const listSoldDishesController = async () => {
+type SoldDishRow = {
+  id: number;
+  dish_id: number;
+  dish_name: string;
+  presentation: string;
+  quantity: number;
+  unit_price: number;
+  total: number;
+  order_id: number;
+  order_code: string;
+  modality: AttentionModality;
+  table_number: number | null;
+  sold_at: string | null;
+};
+
+export const listSoldDishesController = async (): Promise<SoldDishRow[]> => {
   const details = await OrderDetail.findAll({
     include: [
       {
@@ -614,19 +629,20 @@ export const listSoldDishesController = async () => {
     const table = order
       ? ((order.get("table") as Table | undefined) ?? undefined)
       : undefined;
+    const soldAt = order?.confirmed_at || order?.created_at || null;
     return {
-      id: detail.id,
-      dish_id: detail.dish_id,
+      id: Number(detail.id),
+      dish_id: Number(detail.dish_id),
       dish_name: dish?.name || `Plato ${detail.dish_id}`,
       presentation: dish?.presentation || "",
       quantity: Number(detail.quantity),
       unit_price: Number(detail.unit_price),
       total: Number(detail.unit_price) * Number(detail.quantity),
-      order_id: order?.id || detail.order_id,
+      order_id: Number(order?.id || detail.order_id),
       order_code: order?.code || "",
       modality: order?.modality || "mesa",
       table_number: table?.number ?? null,
-      sold_at: order?.confirmed_at || order?.created_at || null,
+      sold_at: soldAt ? new Date(soldAt).toISOString() : null,
     };
   });
 };
