@@ -1,6 +1,8 @@
 import { Router } from "express";
 import {
   openOrderHandler,
+  joinTablesHandler,
+  splitTableHandler,
   addOrderDetailHandler,
   removeOrderDetailHandler,
   updateOrderDetailHandler,
@@ -27,6 +29,16 @@ router.get("/tables", listTablesHandler);
 router.post("/tables/seed", requireRoles("admin"), seedTablesHandler);
 
 router.get("/", requireRoles("mesero", "admin", "cocinero", "cajero"), listOrdersHandler);
+router.post(
+  "/join-tables",
+  requireRoles("mesero", "admin"),
+  joinTablesHandler
+);
+router.post(
+  "/split-table",
+  requireRoles("mesero", "admin"),
+  splitTableHandler
+);
 router.get(
   "/sales",
   requireRoles("admin", "cajero"),

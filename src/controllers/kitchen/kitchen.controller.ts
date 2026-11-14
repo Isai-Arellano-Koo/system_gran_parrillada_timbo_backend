@@ -16,6 +16,11 @@ const ticketInclude = [
     include: [
       { model: Table, as: "table" },
       {
+        model: Table,
+        as: "tables",
+        through: { attributes: [] },
+      },
+      {
         model: OrderDetail,
         as: "details",
         where: { sent_to_kitchen: true },

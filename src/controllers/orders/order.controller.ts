@@ -5,6 +5,7 @@ import {
   InventoryMovement,
   KitchenTicket,
   Order,
+  OrderTable,
   OrderDetail,
   RecipeItem,
   Table,
@@ -67,10 +68,17 @@ const generateOffsiteOrderCode = async (
 };
 
 // Trae el pedido con mesa, mesero, platos y comanda
+const tablesInclude = {
+  model: Table,
+  as: "tables",
+  through: { attributes: [] },
+};
+
 const loadOrder = async (orderId: number) => {
   const order = await Order.findByPk(orderId, {
     include: [
       { model: Table, as: "table" },
+      tablesInclude,
       { model: User, as: "waiter", attributes: ["id", "name", "email"] },
       {
         model: OrderDetail,
@@ -82,6 +90,82 @@ const loadOrder = async (orderId: number) => {
   });
   if (!order) throw new AppError("Pedido no encontrado", 404);
   return order;
+};
+
+const OPEN_STATUSES = ["en_edicion", "confirmado"] as const;
+
+const findOpenOrderByTable = async (tableId: number, t: Transaction) => {
+  const viaLink = await OrderTable.findOne({
+    where: { table_id: tableId },
+    include: [
+      {
+        model: Order,
+        as: "order",
+        required: true,
+        where: { status: { [Op.in]: [...OPEN_STATUSES] } },
+      },
+    ],
+    transaction: t,
+  });
+  if (viaLink) return viaLink.get("order") as Order;
+  return Order.findOne({
+    where: {
+      table_id: tableId,
+      status: { [Op.in]: [...OPEN_STATUSES] },
+    },
+    transaction: t,
+  });
+};
+
+const linkTableToOrder = async (
+  orderId: number,
+  tableId: number,
+  t: Transaction
+) => {
+  const existing = await OrderTable.findOne({
+    where: { order_id: orderId, table_id: tableId },
+    transaction: t,
+  });
+  if (!existing) {
+    await OrderTable.create(
+      { order_id: orderId, table_id: tableId },
+      { transaction: t }
+    );
+  }
+};
+
+const linkedTables = async (orderId: number, t: Transaction) => {
+  const links = await OrderTable.findAll({
+    where: { order_id: orderId },
+    include: [{ model: Table, as: "table" }],
+    transaction: t,
+  });
+  return links
+    .map((link) => link.get("table") as Table | undefined)
+    .filter((table): table is Table => Boolean(table))
+    .sort((a, b) => a.number - b.number);
+};
+
+const refreshHostTable = async (order: Order, t: Transaction) => {
+  const tables = await linkedTables(order.id, t);
+  const host = tables[0];
+  if (host && order.table_id !== host.id) {
+    order.table_id = host.id;
+    await order.save({ transaction: t });
+  }
+  return tables;
+};
+
+const recalcOrderTotal = async (order: Order, t: Transaction) => {
+  const details = await OrderDetail.findAll({
+    where: { order_id: order.id },
+    transaction: t,
+  });
+  order.total = details.reduce(
+    (sum, detail) => sum + Number(detail.unit_price) * Number(detail.quantity),
+    0
+  );
+  await order.save({ transaction: t });
 };
 
 // Suma cuánto ingrediente pide cada plato del pedido
@@ -320,14 +404,7 @@ export const openOrderController = async (
       throw new AppError("Mesa no válida", 404);
     }
 
-    // Sigue ocupada mientras comen, aunque el pedido ya haya ido a cocina
-    const open = await Order.findOne({
-      where: {
-        table_id: tableId,
-        status: { [Op.in]: ["en_edicion", "confirmado"] },
-      },
-      transaction: t,
-    });
+    const open = await findOpenOrderByTable(tableId, t);
     if (open) {
       throw new AppError("La mesa sigue ocupada");
     }
@@ -343,6 +420,134 @@ export const openOrderController = async (
       },
       { transaction: t }
     );
+    await linkTableToOrder(order.id, tableId, t);
+    return order.id;
+  });
+
+  return loadOrder(orderId);
+};
+
+export const joinTablesController = async (
+  fromTableId: number,
+  toTableId: number,
+  userId: number,
+  role: UserRole
+) => {
+  if (role !== "admin" && role !== "mesero") {
+    throw new AppError("Solo el mesero o el administrador une mesas", 403);
+  }
+  const fromId = Number(fromTableId);
+  const toId = Number(toTableId);
+  if (!fromId || !toId) throw new AppError("Elige dos mesas para unirlas");
+  if (fromId === toId) throw new AppError("Arrastra una mesa sobre otra distinta");
+
+  const orderId = await sequelize.transaction(async (t) => {
+    const firstId = Math.min(fromId, toId);
+    const secondId = Math.max(fromId, toId);
+    const first = await Table.findByPk(firstId, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    const second = await Table.findByPk(secondId, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    if (!first?.is_active || !second?.is_active) {
+      throw new AppError("Mesa no válida", 404);
+    }
+
+    const fromOrder = await findOpenOrderByTable(fromId, t);
+    const toOrder = await findOpenOrderByTable(toId, t);
+
+    if (fromOrder && toOrder && fromOrder.id === toOrder.id) {
+      return fromOrder.id;
+    }
+
+    if (!fromOrder && !toOrder) {
+      const host = first.number <= second.number ? first : second;
+      const guest = host.id === first.id ? second : first;
+      const order = await Order.create(
+        {
+          code: await generateTableOrderCode(host.number, t),
+          modality: "mesa",
+          table_id: host.id,
+          waiter_id: userId,
+          status: "en_edicion",
+          total: 0,
+        },
+        { transaction: t }
+      );
+      await linkTableToOrder(order.id, host.id, t);
+      await linkTableToOrder(order.id, guest.id, t);
+      return order.id;
+    }
+
+    if (fromOrder && !toOrder) {
+      await linkTableToOrder(fromOrder.id, toId, t);
+      await refreshHostTable(fromOrder, t);
+      return fromOrder.id;
+    }
+
+    if (!fromOrder && toOrder) {
+      await linkTableToOrder(toOrder.id, fromId, t);
+      await refreshHostTable(toOrder, t);
+      return toOrder.id;
+    }
+
+    if (fromOrder!.status !== "en_edicion") {
+      throw new AppError(
+        "Esa mesa ya envió a cocina. Únela a una mesa libre o únela antes de confirmar."
+      );
+    }
+
+    await OrderDetail.update(
+      { order_id: toOrder!.id },
+      { where: { order_id: fromOrder!.id }, transaction: t }
+    );
+    const sourceLinks = await OrderTable.findAll({
+      where: { order_id: fromOrder!.id },
+      transaction: t,
+    });
+    for (const link of sourceLinks) {
+      await linkTableToOrder(toOrder!.id, link.table_id, t);
+      await link.destroy({ transaction: t });
+    }
+    fromOrder!.status = "cancelado";
+    fromOrder!.cancel_reason = "Unión de mesas";
+    fromOrder!.cancelled_at = new Date();
+    await fromOrder!.save({ transaction: t });
+    await recalcOrderTotal(toOrder!, t);
+    await refreshHostTable(toOrder!, t);
+    return toOrder!.id;
+  });
+
+  return loadOrder(orderId);
+};
+
+export const splitTableController = async (tableId: number, role: UserRole) => {
+  if (role !== "admin" && role !== "mesero") {
+    throw new AppError("Solo el mesero o el administrador separa mesas", 403);
+  }
+  const id = Number(tableId);
+  if (!id) throw new AppError("Elige la mesa a separar");
+
+  const orderId = await sequelize.transaction(async (t) => {
+    const table = await Table.findByPk(id, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    if (!table) throw new AppError("Mesa no válida", 404);
+    const order = await findOpenOrderByTable(id, t);
+    if (!order) throw new AppError("Esa mesa no está en un pedido");
+    const tables = await linkedTables(order.id, t);
+    if (tables.length <= 1) {
+      throw new AppError("No se puede separar la única mesa del pedido");
+    }
+    await OrderTable.destroy({
+      where: { order_id: order.id, table_id: id },
+      transaction: t,
+    });
+    await refreshHostTable(order, t);
     return order.id;
   });
 
@@ -370,6 +575,7 @@ export const listOrdersController = async (
     where,
     include: [
       { model: Table, as: "table" },
+      tablesInclude,
       { model: User, as: "waiter", attributes: ["id", "name"] },
       {
         model: OrderDetail,

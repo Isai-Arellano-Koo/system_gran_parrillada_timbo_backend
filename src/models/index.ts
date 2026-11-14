@@ -5,6 +5,7 @@ import { Dish } from "./Dish";
 import { RecipeItem } from "./RecipeItem";
 import { Table } from "./Table";
 import { Order } from "./Order";
+import { OrderTable } from "./OrderTable";
 import { OrderDetail } from "./OrderDetail";
 import { KitchenTicket } from "./KitchenTicket";
 import { InventoryMovement } from "./InventoryMovement";
@@ -39,6 +40,23 @@ RecipeItem.belongsTo(Ingredient, {
 
 Table.hasMany(Order, { foreignKey: "table_id", as: "orders" });
 Order.belongsTo(Table, { foreignKey: "table_id", as: "table" });
+
+Order.belongsToMany(Table, {
+  through: OrderTable,
+  foreignKey: "order_id",
+  otherKey: "table_id",
+  as: "tables",
+});
+Table.belongsToMany(Order, {
+  through: OrderTable,
+  foreignKey: "table_id",
+  otherKey: "order_id",
+  as: "joined_orders",
+});
+OrderTable.belongsTo(Order, { foreignKey: "order_id", as: "order" });
+OrderTable.belongsTo(Table, { foreignKey: "table_id", as: "table" });
+Order.hasMany(OrderTable, { foreignKey: "order_id", as: "table_links" });
+Table.hasMany(OrderTable, { foreignKey: "table_id", as: "order_links" });
 
 User.hasMany(Order, { foreignKey: "waiter_id", as: "orders" });
 Order.belongsTo(User, { foreignKey: "waiter_id", as: "waiter" });
@@ -125,6 +143,7 @@ export {
   RecipeItem,
   Table,
   Order,
+  OrderTable,
   OrderDetail,
   KitchenTicket,
   InventoryMovement,

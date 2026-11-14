@@ -1,6 +1,8 @@
 import { Request, Response } from "express";
 import {
   openOrderController,
+  joinTablesController,
+  splitTableController,
   addOrderDetailController,
   removeOrderDetailController,
   updateOrderDetailController,
@@ -63,6 +65,21 @@ export const openOrderHandler = (req: Request, res: Response) =>
     res,
     () => openOrderController(req.body || {}, req.user!.id, req.user!.role),
     201
+  );
+
+export const joinTablesHandler = (req: Request, res: Response) =>
+  handle(res, () =>
+    joinTablesController(
+      Number(req.body?.from_table_id),
+      Number(req.body?.to_table_id),
+      req.user!.id,
+      req.user!.role
+    )
+  );
+
+export const splitTableHandler = (req: Request, res: Response) =>
+  handle(res, () =>
+    splitTableController(Number(req.body?.table_id), req.user!.role)
   );
 
 export const addOrderDetailHandler = (req: Request, res: Response) =>

@@ -104,6 +104,26 @@ export const connectDatabase = async () => {
     `ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_note TEXT`
   );
   await sequelize.query(`
+    CREATE TABLE IF NOT EXISTS order_tables (
+      id SERIAL PRIMARY KEY,
+      order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      table_id INTEGER NOT NULL REFERENCES tables(id),
+      created_at TIMESTAMP WITH TIME ZONE,
+      updated_at TIMESTAMP WITH TIME ZONE,
+      UNIQUE (order_id, table_id)
+    )
+  `);
+  await sequelize.query(`
+    INSERT INTO order_tables (order_id, table_id, created_at, updated_at)
+    SELECT o.id, o.table_id, NOW(), NOW()
+    FROM orders o
+    WHERE o.table_id IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM order_tables ot
+        WHERE ot.order_id = o.id AND ot.table_id = o.table_id
+      )
+  `);
+  await sequelize.query(`
     UPDATE order_details d
     SET sent_to_kitchen = true
     FROM orders o
