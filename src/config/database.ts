@@ -83,6 +83,12 @@ export const connectDatabase = async () => {
     `ALTER TABLE orders ADD COLUMN IF NOT EXISTS modality VARCHAR(16) NOT NULL DEFAULT 'mesa'`
   );
   await sequelize.query(
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMP WITH TIME ZONE`
+  );
+  await sequelize.query(
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMP WITH TIME ZONE`
+  );
+  await sequelize.query(
     `ALTER TABLE orders ALTER COLUMN table_id DROP NOT NULL`
   );
   await sequelize.query(

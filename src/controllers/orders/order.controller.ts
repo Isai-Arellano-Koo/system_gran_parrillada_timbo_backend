@@ -248,14 +248,24 @@ export const seedTablesController = async (count = 30) => {
   return Table.findAll({ order: [["number", "ASC"]] });
 };
 
+const resolveOpenModality = (data: OpenOrderInput): AttentionModality => {
+  if (isOffsiteModality(data.modality)) {
+    return data.modality as AttentionModality;
+  }
+  const hasCustomer = Boolean(data.delivery_customer_name?.trim());
+  const hasTable = Boolean(Number(data.table_id));
+  if (hasCustomer && !hasTable) {
+    return data.delivery_address?.trim() ? "delivery" : "para_llevar";
+  }
+  return "mesa";
+};
+
 export const openOrderController = async (
   data: OpenOrderInput,
   userId: number,
   role: UserRole
 ) => {
-  const modality: AttentionModality = isOffsiteModality(data.modality)
-    ? (data.modality as AttentionModality)
-    : "mesa";
+  const modality = resolveOpenModality(data);
 
   if (isOffsiteModality(modality)) {
     if (role !== "admin" && role !== "cajero") {
@@ -380,25 +390,24 @@ export const listSoldDishesController = async () => {
         as: "order",
         required: true,
         where: { status: { [Op.in]: ["confirmado", "cerrado"] } },
-        attributes: [
-          "id",
-          "code",
-          "modality",
-          "table_id",
-          "confirmed_at",
-          "created_at",
-        ],
-        include: [{ model: Table, as: "table", attributes: ["id", "number"] }],
+        include: [{ model: Table, as: "table", required: false }],
       },
-      { model: Dish, as: "dish", attributes: ["id", "name", "presentation"] },
+      {
+        model: Dish,
+        as: "dish",
+        required: false,
+        attributes: ["id", "name", "presentation"],
+      },
     ],
     order: [["id", "DESC"]],
   });
 
   return details.map((detail) => {
-    const order = detail.get("order") as Order;
+    const order = (detail.get("order") as Order | undefined) || undefined;
     const dish = detail.get("dish") as Dish | undefined;
-    const table = order.get("table") as Table | undefined;
+    const table = order
+      ? ((order.get("table") as Table | undefined) ?? undefined)
+      : undefined;
     return {
       id: detail.id,
       dish_id: detail.dish_id,
@@ -407,11 +416,11 @@ export const listSoldDishesController = async () => {
       quantity: Number(detail.quantity),
       unit_price: Number(detail.unit_price),
       total: Number(detail.unit_price) * Number(detail.quantity),
-      order_id: order.id,
-      order_code: order.code,
-      modality: order.modality || "mesa",
+      order_id: order?.id || detail.order_id,
+      order_code: order?.code || "",
+      modality: order?.modality || "mesa",
       table_number: table?.number ?? null,
-      sold_at: order.confirmed_at || order.created_at,
+      sold_at: order?.confirmed_at || order?.created_at || null,
     };
   });
 };
@@ -729,7 +738,6 @@ export const cancelOrderController = async (
     const order = await Order.findByPk(orderId, {
       transaction: t,
       lock: t.LOCK.UPDATE,
-      include: [{ model: KitchenTicket, as: "kitchen_ticket" }],
     });
     if (!order) throw new AppError("Pedido no encontrado", 404);
     if (order.status === "cancelado") {
@@ -739,7 +747,10 @@ export const cancelOrderController = async (
       throw new AppError("El pedido ya está cerrado y la mesa fue liberada");
     }
 
-    const ticket = order.get("kitchen_ticket") as KitchenTicket | undefined;
+    const ticket = await KitchenTicket.findOne({
+      where: { order_id: orderId },
+      transaction: t,
+    });
 
     // Si cocina todavía no empezó, el stock vuelve. Si ya se cocinó, es merma
     if (order.status === "confirmado" && ticket) {
