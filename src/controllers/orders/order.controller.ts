@@ -441,7 +441,7 @@ export const joinTablesController = async (
       );
     }
 
-    await mergeIntoGroup([fromId, toId], userId, t);
+    await mergeIntoGroup([fromId, toId], userId, role, t);
     const memberIds = await tableIdsInSameGroup(fromId, t);
     const host =
       first.number <= second.number ? first : second;

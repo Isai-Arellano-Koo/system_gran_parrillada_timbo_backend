@@ -43,7 +43,7 @@ router.post(
 );
 router.delete(
   "/tables/groups/:groupId",
-  requireRoles("admin"),
+  requireRoles("admin", "mesero"),
   ungroupTablesHandler
 );
 router.patch(

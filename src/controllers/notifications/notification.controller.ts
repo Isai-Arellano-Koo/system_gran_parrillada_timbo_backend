@@ -1,7 +1,9 @@
 import { UniqueConstraintError } from "sequelize";
 import {
+  Dish,
   KitchenTicket,
   Order,
+  OrderDetail,
   Table,
   WaiterNotification,
 } from "../../models";
@@ -12,9 +14,11 @@ export type WaiterNotificationRow = {
   id: number;
   order_id: number;
   kitchen_ticket_id: number;
+  order_detail_id: number | null;
   waiter_id: number;
   order_code: string;
   table_label: string;
+  dish_label: string;
   generated_at: string;
   attended_at: string | null;
 };
@@ -46,47 +50,63 @@ const tableLabelFromOrder = (order: Order) => {
   return "Mesa";
 };
 
+const dishLabelOf = (dish?: Dish | null, observation?: string | null) => {
+  const name = dish?.name || "Plato";
+  const presentation = (dish?.presentation || "").trim();
+  const base = presentation ? `${name} — ${presentation}` : name;
+  const note = (observation || "").trim();
+  return note ? `${base} (${note})` : base;
+};
+
 const serialize = (row: WaiterNotification): WaiterNotificationRow => ({
   id: Number(row.id),
   order_id: Number(row.order_id),
   kitchen_ticket_id: Number(row.kitchen_ticket_id),
+  order_detail_id: row.order_detail_id ? Number(row.order_detail_id) : null,
   waiter_id: Number(row.waiter_id),
   order_code: row.order_code,
   table_label: row.table_label,
+  dish_label: row.dish_label || "Plato",
   generated_at: row.created_at
     ? new Date(row.created_at).toISOString()
     : new Date(row.ticket_ready_at).toISOString(),
   attended_at: row.attended_at ? new Date(row.attended_at).toISOString() : null,
 });
 
-export const notifyWaiterTicketReady = async (
-  ticketId: number
+export const notifyWaiterDishReady = async (
+  detailId: number
 ): Promise<WaiterNotificationRow | null> => {
-  const ticket = await KitchenTicket.findByPk(ticketId, {
+  const detail = await OrderDetail.findByPk(detailId, {
     include: [
+      { model: Dish, as: "dish" },
       {
         model: Order,
         as: "order",
         include: [
           { model: Table, as: "table" },
           { model: Table, as: "tables", through: { attributes: [] } },
+          { model: KitchenTicket, as: "kitchen_ticket" },
         ],
       },
     ],
   });
-  if (!ticket || ticket.status !== "listo") return null;
-  const order = ticket.get("order") as Order | undefined;
+  if (!detail || detail.kitchen_status !== "listo") return null;
+  const order = detail.get("order") as Order | undefined;
   if (!order) return null;
+  const ticket = order.get("kitchen_ticket") as KitchenTicket | undefined;
+  if (!ticket) return null;
+  const dish = detail.get("dish") as Dish | undefined;
 
-  const readyAt = ticket.status_changed_at || new Date();
   try {
     const created = await WaiterNotification.create({
       kitchen_ticket_id: ticket.id,
       order_id: order.id,
+      order_detail_id: detail.id,
       waiter_id: order.waiter_id,
       order_code: order.code,
       table_label: tableLabelFromOrder(order),
-      ticket_ready_at: readyAt,
+      dish_label: dishLabelOf(dish, detail.observation),
+      ticket_ready_at: new Date(),
       attended_at: null,
     });
     return serialize(created);

@@ -8,7 +8,7 @@ import {
 } from "../../models";
 import { AppError } from "../../middlewares/errorHandler";
 import { KITCHEN_STATUSES, type KitchenStatus } from "../../types/enums";
-import { notifyWaiterTicketReady } from "../notifications/notification.controller";
+import { notifyWaiterDishReady } from "../notifications/notification.controller";
 
 const ticketInclude = [
   {
@@ -74,14 +74,10 @@ const syncTicketFromDishes = async (orderId: number, userId: number) => {
     details.map((detail) => (detail.kitchen_status || "pendiente") as KitchenStatus)
   );
   if (ticket.status === next) return;
-  const previous = ticket.status;
   ticket.status = next;
   ticket.status_changed_by = userId;
   ticket.status_changed_at = new Date();
   await ticket.save();
-  if (next === "listo" && previous !== "listo") {
-    await notifyWaiterTicketReady(ticket.id);
-  }
 };
 
 export const listKitchenTicketsController = async () => {
@@ -103,7 +99,6 @@ export const updateKitchenStatusController = async (
   const ticket = await KitchenTicket.findByPk(ticketId);
   if (!ticket) throw new AppError("Comanda no encontrada", 404);
 
-  const previous = ticket.status;
   ticket.status = status;
   ticket.status_changed_by = userId;
   ticket.status_changed_at = new Date();
@@ -113,16 +108,22 @@ export const updateKitchenStatusController = async (
     where: { order_id: ticket.order_id, sent_to_kitchen: true },
   });
   const rank = (value: KitchenStatus) => KITCHEN_STATUSES.indexOf(value);
+  const newlyReady: number[] = [];
   for (const detail of details) {
     const current = (detail.kitchen_status || "pendiente") as KitchenStatus;
     if (rank(current) < rank(status)) {
+      if (status === "listo" && current !== "listo") {
+        newlyReady.push(detail.id);
+      }
       detail.kitchen_status = status;
       await detail.save();
     }
   }
 
-  if (status === "listo" && previous !== "listo") {
-    await notifyWaiterTicketReady(ticket.id);
+  if (status === "listo") {
+    for (const detailId of newlyReady) {
+      await notifyWaiterDishReady(detailId);
+    }
   }
 
   return loadTicket(ticketId);
@@ -142,9 +143,13 @@ export const updateKitchenDishController = async (
     throw new AppError("Plato no encontrado en cocina", 404);
   }
 
+  const previous = (detail.kitchen_status || "pendiente") as KitchenStatus;
   detail.kitchen_status = status;
   await detail.save();
   await syncTicketFromDishes(detail.order_id, userId);
+  if (status === "listo" && previous !== "listo") {
+    await notifyWaiterDishReady(detail.id);
+  }
 
   const ticket = await KitchenTicket.findOne({
     where: { order_id: detail.order_id },

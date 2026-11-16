@@ -23,6 +23,8 @@ type TableRow = {
   group_id: number | null;
   group_numbers: number[];
   occupied: boolean;
+  group_created_by: number | null;
+  can_ungroup: boolean;
 };
 
 type TableChangeRow = {
@@ -97,6 +99,7 @@ export const tableIdsInSameGroup = async (tableId: number, t?: Transaction) => {
 export const mergeIntoGroup = async (
   tableIds: number[],
   userId: number,
+  role: UserRole,
   t: Transaction
 ) => {
   const unique = [...new Set(tableIds.map(Number).filter((id) => id > 0))];
@@ -122,6 +125,20 @@ export const mergeIntoGroup = async (
     transaction: t,
   });
   const groupIds = [...new Set(existing.map((row) => row.group_id))];
+  if (groupIds.length) {
+    const groups = await TableGroup.findAll({
+      where: { id: { [Op.in]: groupIds } },
+      transaction: t,
+    });
+    if (role !== "admin") {
+      const locked = groups.find((group) => group.created_by !== userId);
+      if (locked) {
+        throw new AppError(
+          "Ese grupo lo armó administración. Solo puedes unir mesas libres o un grupo que tú formaste"
+        );
+      }
+    }
+  }
   const extraMembers =
     groupIds.length > 0
       ? await TableGroupMember.findAll({
@@ -186,7 +203,10 @@ export const mergeIntoGroup = async (
   return group;
 };
 
-const serializeTables = async (role?: UserRole): Promise<TableRow[]> => {
+const serializeTables = async (
+  role?: UserRole,
+  userId?: number
+): Promise<TableRow[]> => {
   const count = await Table.count();
   if (count === 0) {
     await Table.bulkCreate(
@@ -224,9 +244,15 @@ const serializeTables = async (role?: UserRole): Promise<TableRow[]> => {
     );
   }
   const occupied = await occupiedTableIds();
+  const groups = await TableGroup.findAll();
+  const createdByGroup = new Map<number, number>();
+  for (const group of groups) {
+    createdByGroup.set(Number(group.id), Number(group.created_by));
+  }
 
   return tables.map((table) => {
     const groupId = groupByTable.get(Number(table.id)) || null;
+    const createdBy = groupId ? createdByGroup.get(groupId) || null : null;
     return {
       id: Number(table.id),
       number: Number(table.number),
@@ -235,14 +261,20 @@ const serializeTables = async (role?: UserRole): Promise<TableRow[]> => {
       group_id: groupId,
       group_numbers: groupId ? numbersByGroup.get(groupId) || [] : [],
       occupied: occupied.has(Number(table.id)),
+      group_created_by: createdBy,
+      can_ungroup: Boolean(
+        groupId &&
+          (role === "admin" || (userId != null && createdBy === userId))
+      ),
     };
   });
 };
 
 export const listTablesController = async (
-  role?: UserRole
+  role?: UserRole,
+  userId?: number
 ): Promise<TableRow[]> => {
-  return serializeTables(role);
+  return serializeTables(role, userId);
 };
 
 export const seedTablesController = async (
@@ -351,9 +383,9 @@ export const groupTablesController = async (
     throw new AppError("Esas mesas ya están agrupadas");
   }
   await sequelize.transaction(async (t) => {
-    await mergeIntoGroup(tableIds, userId, t);
+    await mergeIntoGroup(tableIds, userId, role, t);
   });
-  return serializeTables(role === "admin" ? "admin" : undefined);
+  return serializeTables(role === "admin" ? "admin" : undefined, userId);
 };
 
 export const ungroupTablesController = async (
@@ -361,13 +393,20 @@ export const ungroupTablesController = async (
   userId: number,
   role: UserRole
 ): Promise<TableRow[]> => {
-  if (role !== "admin") {
-    throw new AppError("Solo administración separa un grupo de mesas", 403);
+  if (role !== "admin" && role !== "mesero") {
+    throw new AppError("No puedes separar mesas", 403);
   }
   const id = Number(groupId);
   if (!id) throw new AppError("Grupo no válido");
 
   await sequelize.transaction(async (t) => {
+    const group = await TableGroup.findByPk(id, { transaction: t });
+    if (!group) throw new AppError("Ese grupo no existe", 404);
+    if (role !== "admin" && group.created_by !== userId) {
+      throw new AppError(
+        "Ese grupo lo armó administración. Solo puedes separar un grupo que tú formaste"
+      );
+    }
     const members = await TableGroupMember.findAll({
       where: { group_id: id },
       transaction: t,
@@ -394,7 +433,7 @@ export const ungroupTablesController = async (
       { transaction: t }
     );
   });
-  return serializeTables("admin");
+  return serializeTables(role === "admin" ? "admin" : undefined, userId);
 };
 
 export const listTableChangesController = async (

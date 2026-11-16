@@ -47,7 +47,7 @@ const handle = async (
 };
 
 export const listTablesHandler = (req: Request, res: Response) =>
-  handle(res, () => listTablesController(req.user?.role));
+  handle(res, () => listTablesController(req.user?.role, req.user?.id));
 
 export const seedTablesHandler = (_req: Request, res: Response) =>
   handle(res, () => seedTablesController(30), 201);

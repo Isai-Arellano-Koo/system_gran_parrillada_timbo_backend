@@ -182,6 +182,14 @@ Order.hasMany(WaiterNotification, {
   as: "waiter_notifications",
 });
 WaiterNotification.belongsTo(Order, { foreignKey: "order_id", as: "order" });
+OrderDetail.hasMany(WaiterNotification, {
+  foreignKey: "order_detail_id",
+  as: "waiter_notifications",
+});
+WaiterNotification.belongsTo(OrderDetail, {
+  foreignKey: "order_detail_id",
+  as: "order_detail",
+});
 User.hasMany(WaiterNotification, {
   foreignKey: "waiter_id",
   as: "waiter_notifications",

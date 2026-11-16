@@ -178,6 +178,17 @@ export const connectDatabase = async () => {
       UNIQUE (kitchen_ticket_id, ticket_ready_at)
     )
   `);
+  await sequelize.query(
+    `ALTER TABLE waiter_notifications ADD COLUMN IF NOT EXISTS order_detail_id INTEGER`
+  );
+  await sequelize.query(
+    `ALTER TABLE waiter_notifications ADD COLUMN IF NOT EXISTS dish_label VARCHAR(160)`
+  );
+  await sequelize.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS waiter_notifications_detail_unique
+    ON waiter_notifications (order_detail_id)
+    WHERE order_detail_id IS NOT NULL
+  `);
   await sequelize.query(`
     UPDATE order_details d
     SET sent_to_kitchen = true

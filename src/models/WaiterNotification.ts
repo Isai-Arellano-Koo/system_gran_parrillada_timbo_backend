@@ -15,9 +15,11 @@ export class WaiterNotification extends Model<
   declare id: CreationOptional<number>;
   declare kitchen_ticket_id: ForeignKey<number>;
   declare order_id: ForeignKey<number>;
+  declare order_detail_id: ForeignKey<number | null>;
   declare waiter_id: ForeignKey<number>;
   declare order_code: string;
   declare table_label: string;
+  declare dish_label: CreationOptional<string | null>;
   declare ticket_ready_at: Date;
   declare attended_at: CreationOptional<Date | null>;
   declare created_at: CreationOptional<Date>;
@@ -39,6 +41,11 @@ WaiterNotification.init(
       type: DataTypes.INTEGER,
       allowNull: false,
     },
+    order_detail_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      unique: true,
+    },
     waiter_id: {
       type: DataTypes.INTEGER,
       allowNull: false,
@@ -50,6 +57,10 @@ WaiterNotification.init(
     table_label: {
       type: DataTypes.STRING(80),
       allowNull: false,
+    },
+    dish_label: {
+      type: DataTypes.STRING(160),
+      allowNull: true,
     },
     ticket_ready_at: {
       type: DataTypes.DATE,
