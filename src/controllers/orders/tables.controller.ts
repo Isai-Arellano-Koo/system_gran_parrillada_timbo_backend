@@ -10,6 +10,7 @@ import {
   User,
 } from "../../models";
 import { sequelize } from "../../config/database";
+import { publishLive } from "../../live/hub";
 import { AppError } from "../../middlewares/errorHandler";
 import type { UserRole } from "../../types/enums";
 
@@ -360,6 +361,7 @@ export const setTableActiveController = async (
   });
 
   const list = await serializeTables("admin");
+  publishLive("tables", "orders");
   return list.find((item) => item.id === id);
 };
 
@@ -385,6 +387,7 @@ export const groupTablesController = async (
   await sequelize.transaction(async (t) => {
     await mergeIntoGroup(tableIds, userId, role, t);
   });
+  publishLive("tables", "orders");
   return serializeTables(role === "admin" ? "admin" : undefined, userId);
 };
 
@@ -433,6 +436,7 @@ export const ungroupTablesController = async (
       { transaction: t }
     );
   });
+  publishLive("tables", "orders");
   return serializeTables(role === "admin" ? "admin" : undefined, userId);
 };
 

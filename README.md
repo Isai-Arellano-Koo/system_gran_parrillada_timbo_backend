@@ -246,6 +246,7 @@ Todas las rutas empiezan con `/api`. Salvo las públicas, requieren el encabezad
 |---|---|---|---|
 | GET | `/api/notifications` | Pendientes e historial del mesero (o admin) responsable | mesero, admin |
 | PATCH | `/api/notifications/:notificationId/attend` | Marca la notificación como atendida; no cambia la comanda | mesero, admin |
+| GET | `/api/live` | Canal SSE: avisa a las pantallas abiertas cuando hay un cambio | Autenticado |
 
 ## Estados y tipos definidos
 

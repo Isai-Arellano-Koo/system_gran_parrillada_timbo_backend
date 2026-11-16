@@ -20,6 +20,7 @@ import {
 import { Op, type Transaction } from "sequelize";
 import { sequelize } from "../../config/database";
 import { AppError } from "../../middlewares/errorHandler";
+import { publishLive, type LiveScope } from "../../live/hub";
 import {
   isOffsiteModality,
   type AttentionModality,
@@ -96,6 +97,11 @@ const loadOrder = async (orderId: number) => {
   });
   if (!order) throw new AppError("Pedido no encontrado", 404);
   return order;
+};
+
+const finishOrder = async (orderId: number, extra: LiveScope[] = []) => {
+  publishLive("orders", ...extra);
+  return loadOrder(orderId);
 };
 
 const OPEN_STATUSES = ["en_edicion", "confirmado"] as const;
@@ -357,7 +363,7 @@ export const openOrderController = async (
       );
       return order.id;
     });
-    return loadOrder(orderId);
+    return finishOrder(orderId);
   }
 
   if (role !== "admin" && role !== "mesero") {
@@ -401,7 +407,7 @@ export const openOrderController = async (
     return order.id;
   });
 
-  return loadOrder(orderId);
+  return finishOrder(orderId, ["tables"]);
 };
 
 export const joinTablesController = async (
@@ -462,7 +468,7 @@ export const joinTablesController = async (
     return order.id;
   });
 
-  return loadOrder(orderId);
+  return finishOrder(orderId, ["tables"]);
 };
 
 export const splitTableController = async (
@@ -617,7 +623,7 @@ export const addOrderDetailController = async (
   syncPaidFlag(order);
   await order.save();
 
-  return loadOrder(orderId);
+  return finishOrder(orderId);
 };
 
 export const removeOrderDetailController = async (
@@ -645,7 +651,7 @@ export const removeOrderDetailController = async (
   syncPaidFlag(order);
   await order.save();
 
-  return loadOrder(orderId);
+  return finishOrder(orderId);
 };
 
 export const updateOrderDetailController = async (
@@ -685,7 +691,7 @@ export const updateOrderDetailController = async (
       );
       syncPaidFlag(order);
       await order.save();
-      return loadOrder(orderId);
+      return finishOrder(orderId);
     }
     detail.quantity = quantity;
   }
@@ -703,7 +709,7 @@ export const updateOrderDetailController = async (
   );
   syncPaidFlag(order);
   await order.save();
-  return loadOrder(orderId);
+  return finishOrder(orderId);
 };
 
 export const validateStockController = async (orderId: number) => {
@@ -806,7 +812,7 @@ export const confirmOrderController = async (orderId: number) => {
     }
   });
 
-  return loadOrder(orderId);
+  return finishOrder(orderId, ["kitchen", "inventory"]);
 };
 
 export const sendAdditionsController = async (orderId: number) => {
@@ -851,7 +857,7 @@ export const sendAdditionsController = async (orderId: number) => {
     await order.save({ transaction: t });
   });
 
-  return loadOrder(orderId);
+  return finishOrder(orderId, ["kitchen", "inventory"]);
 };
 
 export const setOrderPaidController = async (orderId: number, paid: boolean) => {
@@ -870,7 +876,7 @@ export const setOrderPaidController = async (orderId: number, paid: boolean) => 
     order.paid_at = null;
   }
   await order.save();
-  return loadOrder(orderId);
+  return finishOrder(orderId, ["tables"]);
 };
 
 export const cancelOrderController = async (
@@ -956,7 +962,7 @@ export const cancelOrderController = async (
     await order.save({ transaction: t });
   });
 
-  return loadOrder(orderId);
+  return finishOrder(orderId, ["kitchen", "inventory", "tables"]);
 };
 
 export const closeOrderController = async (orderId: number) => {
@@ -985,5 +991,5 @@ export const closeOrderController = async (orderId: number) => {
   order.status = "cerrado";
   order.closed_at = new Date();
   await order.save();
-  return loadOrder(orderId);
+  return finishOrder(orderId, ["tables", "kitchen"]);
 };

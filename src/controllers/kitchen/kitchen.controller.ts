@@ -9,6 +9,7 @@ import {
 import { AppError } from "../../middlewares/errorHandler";
 import { KITCHEN_STATUSES, type KitchenStatus } from "../../types/enums";
 import { notifyWaiterDishReady } from "../notifications/notification.controller";
+import { publishLive } from "../../live/hub";
 
 const ticketInclude = [
   {
@@ -126,6 +127,7 @@ export const updateKitchenStatusController = async (
     }
   }
 
+  publishLive("kitchen", "orders", "notifications");
   return loadTicket(ticketId);
 };
 
@@ -155,5 +157,6 @@ export const updateKitchenDishController = async (
     where: { order_id: detail.order_id },
   });
   if (!ticket) throw new AppError("Comanda no encontrada", 404);
+  publishLive("kitchen", "orders", "notifications");
   return loadTicket(ticket.id);
 };

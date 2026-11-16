@@ -8,6 +8,7 @@ import {
   WaiterNotification,
 } from "../../models";
 import { AppError } from "../../middlewares/errorHandler";
+import { publishLive } from "../../live/hub";
 import type { UserRole } from "../../types/enums";
 
 export type WaiterNotificationRow = {
@@ -109,6 +110,7 @@ export const notifyWaiterDishReady = async (
       ticket_ready_at: new Date(),
       attended_at: null,
     });
+    publishLive("notifications");
     return serialize(created);
   } catch (error) {
     if (error instanceof UniqueConstraintError) return null;
@@ -153,6 +155,7 @@ export const attendWaiterNotificationController = async (
   if (!row.attended_at) {
     row.attended_at = new Date();
     await row.save();
+    publishLive("notifications");
   }
   return serialize(row);
 };

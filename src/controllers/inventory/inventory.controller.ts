@@ -2,6 +2,7 @@ import { Ingredient, InventoryMovement, Order, Table, User } from "../../models"
 import { Op } from "sequelize";
 import { sequelize } from "../../config/database";
 import { AppError } from "../../middlewares/errorHandler";
+import { publishLive } from "../../live/hub";
 import { INVENTORY_MOVEMENT_TYPES } from "../../types/enums";
 
 type StockEntryInput = {
@@ -47,6 +48,7 @@ export const registerStockEntryController = async (
       { transaction: t }
     );
 
+    publishLive("inventory");
     return {
       ingredient,
       movement,
@@ -97,6 +99,7 @@ export const adjustStockController = async (
       { transaction: t }
     );
 
+    publishLive("inventory");
     return { ingredient, movement };
   });
 };

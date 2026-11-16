@@ -8,6 +8,7 @@ import {
 } from "../../helpers/mail";
 import { env } from "../../config/env";
 import { AppError } from "../../middlewares/errorHandler";
+import { publishLive } from "../../live/hub";
 import { USER_ROLES, type UserRole } from "../../types/enums";
 
 const CODE_TTL_MS = 15 * 60 * 1000; // el código dura 15 minutos
@@ -246,6 +247,7 @@ export const createUserController = async (data: CreateUserInput) => {
     email_verified: false,
   });
 
+  publishLive("users");
   return toPublic(user);
 };
 
@@ -359,6 +361,7 @@ export const updateUserController = async (
     });
   }
 
+  publishLive("users");
   return toPublic(user);
 };
 

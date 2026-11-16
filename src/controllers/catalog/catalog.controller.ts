@@ -8,6 +8,7 @@ import {
   Category,
 } from "../../models";
 import { AppError } from "../../middlewares/errorHandler";
+import { publishLive } from "../../live/hub";
 import {
   MEASUREMENT_UNITS,
   type MeasurementUnit,
@@ -166,12 +167,14 @@ export const createIngredientController = async (data: IngredientInput) => {
     throw new AppError("Ya existe un ingrediente con ese nombre");
   }
 
-  return Ingredient.create({
+  const created = await Ingredient.create({
     name,
     unit: data.unit,
     stock_minimum: parseStockMinimum(data.stock_minimum ?? 0),
     is_active: data.is_active ?? true,
   });
+  publishLive("catalog", "inventory");
+  return created;
 };
 
 export const updateIngredientController = async (
@@ -212,6 +215,7 @@ export const updateIngredientController = async (
   }
 
   await ingredient.save();
+  publishLive("catalog", "inventory");
   return ingredient;
 };
 
@@ -274,6 +278,7 @@ export const createDishController = async (data: DishInput) => {
     is_active: data.is_active ?? true,
     category_disabled: false,
   });
+  publishLive("catalog");
   return getDishController(created.id);
 };
 
@@ -355,6 +360,7 @@ export const updateDishController = async (
     });
   }
 
+  publishLive("catalog");
   return dish;
 };
 
@@ -420,6 +426,7 @@ export const setRecipeController = async (
     }))
   );
 
+  publishLive("catalog");
   return getDishController(dishId);
 };
 
@@ -455,15 +462,18 @@ export const createCategoryController = async (
     const maxOrder = (await Category.max("sort_order")) as number | null;
     existing.sort_order = Number(maxOrder ?? 0) + 1;
     await setCategoryActive(existing, actorId, true);
+    publishLive("catalog");
     return existing;
   }
 
   const maxOrder = (await Category.max("sort_order")) as number | null;
-  return Category.create({
+  const created = await Category.create({
     name,
     is_active: true,
     sort_order: Number(maxOrder ?? 0) + 1,
   });
+  publishLive("catalog");
+  return created;
 };
 
 export const updateCategoryController = async (
@@ -489,6 +499,7 @@ export const updateCategoryController = async (
     await setCategoryActive(category, actorId, Boolean(data.is_active));
   }
 
+  publishLive("catalog");
   return category;
 };
 
@@ -499,5 +510,6 @@ export const removeCategoryController = async (id: number, actorId: number) => {
     return category;
   }
   await setCategoryActive(category, actorId, false);
+  publishLive("catalog");
   return category;
 };
