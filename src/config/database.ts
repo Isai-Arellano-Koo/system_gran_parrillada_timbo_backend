@@ -164,6 +164,21 @@ export const connectDatabase = async () => {
     )
   `);
   await sequelize.query(`
+    CREATE TABLE IF NOT EXISTS waiter_notifications (
+      id SERIAL PRIMARY KEY,
+      kitchen_ticket_id INTEGER NOT NULL REFERENCES kitchen_tickets(id) ON DELETE CASCADE,
+      order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      waiter_id INTEGER NOT NULL REFERENCES users(id),
+      order_code VARCHAR(40) NOT NULL,
+      table_label VARCHAR(80) NOT NULL,
+      ticket_ready_at TIMESTAMP WITH TIME ZONE NOT NULL,
+      attended_at TIMESTAMP WITH TIME ZONE,
+      created_at TIMESTAMP WITH TIME ZONE,
+      updated_at TIMESTAMP WITH TIME ZONE,
+      UNIQUE (kitchen_ticket_id, ticket_ready_at)
+    )
+  `);
+  await sequelize.query(`
     UPDATE order_details d
     SET sent_to_kitchen = true
     FROM orders o

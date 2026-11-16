@@ -40,6 +40,7 @@ Qué historias entraron en cada sprint y su estado de validación se registran e
 | HU15 | Alertar por stock mínimo | `GET /api/inventory/alerts` |
 | HU17 | Registrar ajustes de inventario | `POST /api/inventory/adjustments` |
 | HU18 | Gestionar y unir mesas | `PATCH /api/orders/tables/:tableId`, `POST /api/orders/tables/groups`, `POST /api/orders/join-tables` |
+| HU20 | Notificar al mesero cuando una comanda esté lista | `GET /api/notifications`, `PATCH /api/notifications/:id/attend` |
 
 ### Reglas de negocio que implementa el flujo del pedido
 
@@ -238,6 +239,13 @@ Todas las rutas empiezan con `/api`. Salvo las públicas, requieren el encabezad
 | GET | `/api/kitchen` | Lista comandas | cocinero, admin, mesero |
 | PATCH | `/api/kitchen/:ticketId/status` | Cambia el estado de la comanda | cocinero, admin |
 | PATCH | `/api/kitchen/details/:detailId/status` | Cambia el estado de un plato dentro de la comanda | cocinero, admin, mesero |
+
+**Notificaciones (HU20)**
+
+| Método | Ruta | Descripción | Acceso |
+|---|---|---|---|
+| GET | `/api/notifications` | Pendientes e historial del mesero (o admin) responsable | mesero, admin |
+| PATCH | `/api/notifications/:notificationId/attend` | Marca la notificación como atendida; no cambia la comanda | mesero, admin |
 
 ## Estados y tipos definidos
 

@@ -18,6 +18,7 @@ import { LoginAttempt } from "./LoginAttempt";
 import { LoginLock } from "./LoginLock";
 import { UserStatusChange } from "./UserStatusChange";
 import { DishStatusChange } from "./DishStatusChange";
+import { WaiterNotification } from "./WaiterNotification";
 
 // Relaciones entre tablas. Sequelize las usa al hacer include
 Category.hasMany(Dish, {
@@ -168,6 +169,25 @@ DishStatusChange.belongsTo(User, {
   as: "changed_by_user",
 });
 
+KitchenTicket.hasMany(WaiterNotification, {
+  foreignKey: "kitchen_ticket_id",
+  as: "waiter_notifications",
+});
+WaiterNotification.belongsTo(KitchenTicket, {
+  foreignKey: "kitchen_ticket_id",
+  as: "kitchen_ticket",
+});
+Order.hasMany(WaiterNotification, {
+  foreignKey: "order_id",
+  as: "waiter_notifications",
+});
+WaiterNotification.belongsTo(Order, { foreignKey: "order_id", as: "order" });
+User.hasMany(WaiterNotification, {
+  foreignKey: "waiter_id",
+  as: "waiter_notifications",
+});
+WaiterNotification.belongsTo(User, { foreignKey: "waiter_id", as: "waiter" });
+
 User.hasMany(LoginAttempt, { foreignKey: "user_id", as: "login_attempts" });
 LoginAttempt.belongsTo(User, { foreignKey: "user_id", as: "user" });
 User.hasMany(LoginLock, { foreignKey: "user_id", as: "login_locks" });
@@ -194,4 +214,5 @@ export {
   LoginLock,
   UserStatusChange,
   DishStatusChange,
+  WaiterNotification,
 };
