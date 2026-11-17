@@ -86,7 +86,7 @@ const loadOrder = async (orderId: number) => {
     include: [
       { model: Table, as: "table" },
       tablesInclude,
-      { model: User, as: "waiter", attributes: ["id", "name", "email"] },
+      { model: User, as: "waiter", attributes: ["id", "name", "email", "role"] },
       {
         model: OrderDetail,
         as: "details",
@@ -507,7 +507,7 @@ export const listOrdersController = async (
     include: [
       { model: Table, as: "table" },
       tablesInclude,
-      { model: User, as: "waiter", attributes: ["id", "name"] },
+      { model: User, as: "waiter", attributes: ["id", "name", "role"] },
       {
         model: OrderDetail,
         as: "details",

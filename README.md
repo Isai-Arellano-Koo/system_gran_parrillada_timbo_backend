@@ -207,7 +207,7 @@ Todas las rutas empiezan con `/api`. Salvo las públicas, requieren el encabezad
 | DELETE | `/api/inventory/movements/:id` | Siempre se rechaza: los movimientos no se borran |
 | GET | `/api/inventory/alerts` | Ingredientes en stock mínimo |
 
-**Pedidos (HU06 a HU09, HU12, HU13 y HU18)**
+**Pedidos (HU06 a HU09, HU12, HU13, HU18 y HU19)**
 
 | Método | Ruta | Descripción | Acceso |
 |---|---|---|---|
@@ -218,9 +218,9 @@ Todas las rutas empiezan con `/api`. Salvo las públicas, requieren el encabezad
 | DELETE | `/api/orders/tables/groups/:groupId` | Separa un grupo de mesas libres | admin |
 | PATCH | `/api/orders/tables/:tableId` | Habilita o inhabilita una mesa con motivo | admin |
 | POST | `/api/orders/join-tables` | Une mesas libres y abre un pedido para el grupo | mesero, admin |
-| GET | `/api/orders` | Lista pedidos (`?modality=mesa\|delivery`) | mesero, admin, cocinero, cajero |
+| GET | `/api/orders` | Lista pedidos con modalidad, mesa y quien atendió (`?modality=mesa\|delivery\|para_llevar\|offsite`) | mesero, admin, cocinero, cajero |
 | GET | `/api/orders/sales` | Historial de platos vendidos | admin, cajero |
-| GET | `/api/orders/:orderId` | Detalle del pedido | mesero, admin, cocinero, cajero |
+| GET | `/api/orders/:orderId` | Detalle del pedido (modalidad, mesas si aplica y responsable) | mesero, admin, cocinero, cajero |
 | POST | `/api/orders` | Abre un pedido de mesa o delivery | mesero, admin, cajero |
 | POST | `/api/orders/:orderId/details` | Agrega plato, cantidad y observación | mesero, admin |
 | PATCH | `/api/orders/:orderId/details/:detailId` | Modifica cantidad u observación de un plato | mesero, admin |
