@@ -238,7 +238,7 @@ Todas las rutas empiezan con `/api`. Salvo las públicas, requieren el encabezad
 |---|---|---|---|
 | GET | `/api/kitchen` | Lista comandas | cocinero, admin, mesero |
 | PATCH | `/api/kitchen/:ticketId/status` | Cambia el estado de la comanda | cocinero, admin |
-| PATCH | `/api/kitchen/details/:detailId/status` | Cambia el estado de un plato dentro de la comanda | cocinero, admin, mesero |
+| PATCH | `/api/kitchen/details/:detailId/status` | Cambia el estado de un plato dentro de la comanda | cocinero, admin |
 
 **Notificaciones (HU20)**
 
