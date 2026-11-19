@@ -25,6 +25,7 @@ const ticketInclude = [
         as: "tables",
         through: { attributes: [] },
       },
+      { model: User, as: "waiter", attributes: ["id", "name", "role"] },
       {
         model: OrderDetail,
         as: "details",
