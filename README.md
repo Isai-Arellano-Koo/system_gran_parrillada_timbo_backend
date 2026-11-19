@@ -203,6 +203,7 @@ Todas las rutas empiezan con `/api`. Salvo las públicas, requieren el encabezad
 |---|---|---|
 | POST | `/api/inventory/entries` | Registra stock inicial o entrada |
 | POST | `/api/inventory/adjustments` | Registra un ajuste |
+| POST | `/api/inventory/movements/:id/review` | Revisa una merma: recuperarla al stock o confirmar que se descarta |
 | GET | `/api/inventory/movements` | Lista movimientos; filtros por `ingredient_id`, `type`, `user_id`, `from` y `to` |
 | DELETE | `/api/inventory/movements/:id` | Siempre se rechaza: los movimientos no se borran |
 | GET | `/api/inventory/alerts` | Ingredientes en stock mínimo |
@@ -230,7 +231,8 @@ Todas las rutas empiezan con `/api`. Salvo las públicas, requieren el encabezad
 | POST | `/api/orders/:orderId/additions` | Envía a cocina los platos adicionales de una mesa con pedido abierto | mesero, admin |
 | PATCH | `/api/orders/:orderId/paid` | Marca el pedido como pagado o sin pagar | mesero, admin, cajero |
 | POST | `/api/orders/:orderId/close` | Cierra el pedido y libera la mesa | mesero, admin |
-| POST | `/api/orders/:orderId/cancel` | Cancela el pedido con motivo (el stock vuelve o se registra merma) | admin, mesero |
+| POST | `/api/orders/:orderId/cancel` | Cancela el pedido con motivo. Los ingredientes quedan como merma pendiente de revisión. No se cancela si ya salió a mesa | admin, mesero, cajero |
+| POST | `/api/orders/:orderId/details/:detailId/return` | Devuelve un plato: no le gustó (se cobra) o defecto (no se cobra). Los ingredientes quedan como merma para que administración los revise | admin, mesero, cajero |
 
 **Cocina (HU10, HU11)**
 

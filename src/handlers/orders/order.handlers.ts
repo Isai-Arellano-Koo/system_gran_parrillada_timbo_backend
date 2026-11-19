@@ -9,6 +9,7 @@ import {
   validateStockController,
   confirmOrderController,
   cancelOrderController,
+  returnOrderDetailController,
   closeOrderController,
   sendAdditionsController,
   setOrderPaidController,
@@ -170,6 +171,19 @@ export const cancelOrderHandler = (req: Request, res: Response) =>
     cancelOrderController(
       Number(req.params.orderId),
       req.body.reason,
+      req.user!.id
+    )
+  );
+
+export const returnOrderDetailHandler = (req: Request, res: Response) =>
+  handle(res, () =>
+    returnOrderDetailController(
+      Number(req.params.orderId),
+      Number(req.params.detailId),
+      {
+        kind: req.body?.kind,
+        note: req.body?.note,
+      },
       req.user!.id
     )
   );

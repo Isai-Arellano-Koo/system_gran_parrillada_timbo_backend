@@ -5,6 +5,7 @@ import {
   InventoryMovement,
   KitchenTicket,
   Order,
+  OrderCancellation,
   OrderTable,
   OrderDetail,
   RecipeItem,
@@ -88,11 +89,40 @@ const loadOrder = async (orderId: number) => {
       tablesInclude,
       { model: User, as: "waiter", attributes: ["id", "name", "email", "role"] },
       {
+        model: User,
+        as: "cancelled_by_user",
+        attributes: ["id", "name", "role"],
+      },
+      {
         model: OrderDetail,
         as: "details",
         include: [{ model: Dish, as: "dish" }],
       },
       { model: KitchenTicket, as: "kitchen_ticket" },
+      {
+        model: OrderCancellation,
+        as: "cancellation",
+        include: [
+          {
+            model: User,
+            as: "cancelled_by_user",
+            attributes: ["id", "name", "role"],
+          },
+        ],
+      },
+      {
+        model: InventoryMovement,
+        as: "inventory_movements",
+        separate: true,
+        order: [["created_at", "DESC"]],
+        include: [
+          {
+            model: Ingredient,
+            as: "ingredient",
+            attributes: ["id", "name", "unit"],
+          },
+        ],
+      },
     ],
   });
   if (!order) throw new AppError("Pedido no encontrado", 404);
@@ -168,15 +198,21 @@ const refreshHostTable = async (order: Order, t: Transaction) => {
   return tables;
 };
 
+const lineCharge = (detail: OrderDetail) => {
+  if (detail.charged === false) return 0;
+  return Number(detail.unit_price) * Number(detail.quantity);
+};
+
 const recalcOrderTotal = async (order: Order, t: Transaction) => {
   const details = await OrderDetail.findAll({
     where: { order_id: order.id },
     transaction: t,
   });
-  order.total = details.reduce(
-    (sum, detail) => sum + Number(detail.unit_price) * Number(detail.quantity),
-    0
-  );
+  order.total = details.reduce((sum, detail) => sum + lineCharge(detail), 0);
+  if (Number(order.amount_paid || 0) > Number(order.total)) {
+    order.amount_paid = Number(order.total);
+  }
+  syncPaidFlag(order);
   await order.save({ transaction: t });
 };
 
@@ -221,6 +257,11 @@ const calcRequiredStock = async (
     ],
   });
 
+  const required = requiredFromDetails(details);
+  return { details, required };
+};
+
+const requiredFromDetails = (details: OrderDetail[]) => {
   const required = new Map<
     number,
     { ingredient: Ingredient; needed: number; dishes: string[] }
@@ -257,7 +298,41 @@ const calcRequiredStock = async (
     }
   }
 
-  return { details, required };
+  return required;
+};
+
+const applyCancelStock = async (
+  required: Map<
+    number,
+    { ingredient: Ingredient; needed: number; dishes: string[] }
+  >,
+  options: {
+    kitchenStatus: KitchenStatus | null;
+    orderId: number;
+    userId: number;
+    reason: string;
+    t: Transaction;
+  }
+) => {
+  const { kitchenStatus, orderId, userId, reason, t } = options;
+  if (!kitchenStatus || kitchenStatus === "entregado") return "none";
+
+  for (const [, item] of required) {
+    if (item.needed <= 0) continue;
+    await InventoryMovement.create(
+      {
+        ingredient_id: item.ingredient.id,
+        type: "merma",
+        quantity: Number(item.needed),
+        reason: `Merma por cancelación: ${reason}`,
+        order_id: orderId,
+        user_id: userId,
+        merma_review: "pendiente",
+      },
+      { transaction: t }
+    );
+  }
+  return "merma";
 };
 
 const consumeRequired = async (
@@ -536,6 +611,7 @@ type SoldDishRow = {
 
 export const listSoldDishesController = async (): Promise<SoldDishRow[]> => {
   const details = await OrderDetail.findAll({
+    where: { charged: true },
     include: [
       {
         model: Order,
@@ -886,6 +962,9 @@ export const cancelOrderController = async (
 ) => {
   const cancelReason = reason?.trim();
   if (!cancelReason) throw new AppError("La cancelación exige un motivo");
+  if (cancelReason.length < 3) {
+    throw new AppError("El motivo debe tener al menos 3 caracteres");
+  }
 
   await sequelize.transaction(async (t) => {
     const order = await Order.findByPk(orderId, {
@@ -904,65 +983,149 @@ export const cancelOrderController = async (
       where: { order_id: orderId },
       transaction: t,
     });
-
-    // Si cocina todavía no empezó, el stock vuelve. Si ya se cocinó, es merma
-    if (order.status === "confirmado" && ticket) {
-      const movements = await InventoryMovement.findAll({
-        where: { order_id: orderId, type: "salida_venta" },
-        transaction: t,
-      });
-
-      const kitchenStatus = ticket.status as KitchenStatus;
-
-      for (const movement of movements) {
-        if (kitchenStatus === "pendiente") {
-          const ingredient = await Ingredient.findByPk(movement.ingredient_id, {
-            transaction: t,
-            lock: t.LOCK.UPDATE,
-          });
-          if (ingredient) {
-            ingredient.stock_current =
-              Number(ingredient.stock_current) + Number(movement.quantity);
-            await ingredient.save({ transaction: t });
-          }
-
-          await InventoryMovement.create(
-            {
-              ingredient_id: movement.ingredient_id,
-              type: "devolucion",
-              quantity: Number(movement.quantity),
-              reason: `Reposición por cancelación: ${cancelReason}`,
-              order_id: orderId,
-              user_id: userId,
-            },
-            { transaction: t }
-          );
-        } else if (
-          kitchenStatus === "en_preparacion" ||
-          kitchenStatus === "listo"
-        ) {
-          await InventoryMovement.create(
-            {
-              ingredient_id: movement.ingredient_id,
-              type: "merma",
-              quantity: Number(movement.quantity),
-              reason: `Merma por cancelación: ${cancelReason}`,
-              order_id: orderId,
-              user_id: userId,
-            },
-            { transaction: t }
-          );
-        }
-      }
+    const kitchenStatus = (ticket?.status || null) as KitchenStatus | null;
+    if (kitchenStatus === "entregado") {
+      throw new AppError(
+        "No se puede cancelar: la comanda ya salió a mesa. Si un plato salió mal, regístralo en el plato"
+      );
     }
 
+    let stockAction: string = "none";
+    if (order.status === "confirmado") {
+      const remaining = await OrderDetail.findAll({
+        where: {
+          order_id: orderId,
+          sent_to_kitchen: true,
+          return_kind: null,
+        },
+        include: [
+          {
+            model: Dish,
+            as: "dish",
+            include: [
+              {
+                model: RecipeItem,
+                as: "recipe_items",
+                include: [{ model: Ingredient, as: "ingredient" }],
+              },
+            ],
+          },
+        ],
+        transaction: t,
+      });
+      stockAction = await applyCancelStock(requiredFromDetails(remaining), {
+        kitchenStatus,
+        orderId,
+        userId,
+        reason: cancelReason,
+        t,
+      });
+    }
+
+    const previousStatus = order.status;
     order.status = "cancelado";
     order.cancel_reason = cancelReason;
     order.cancelled_at = new Date();
+    order.cancelled_by = userId;
     await order.save({ transaction: t });
+
+    await OrderCancellation.create(
+      {
+        order_id: orderId,
+        previous_status: previousStatus,
+        previous_kitchen_status: kitchenStatus,
+        stock_action: stockAction,
+        reason: cancelReason,
+        cancelled_by: userId,
+      },
+      { transaction: t }
+    );
   });
 
   return finishOrder(orderId, ["kitchen", "inventory", "tables"]);
+};
+
+export const returnOrderDetailController = async (
+  orderId: number,
+  detailId: number,
+  data: { kind?: string; note?: string },
+  userId: number
+) => {
+  const kind = data.kind === "defecto" ? "defecto" : data.kind === "no_le_gusto" ? "no_le_gusto" : "";
+  if (!kind) {
+    throw new AppError("Indica si no le gustó o si salió con defecto");
+  }
+  const note = data.note?.trim() || null;
+
+  await sequelize.transaction(async (t) => {
+    const order = await Order.findByPk(orderId, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    if (!order) throw new AppError("Pedido no encontrado", 404);
+    if (order.status !== "confirmado") {
+      throw new AppError("Solo se registra la devolución en un pedido abierto");
+    }
+
+    const detail = await OrderDetail.findOne({
+      where: { id: detailId, order_id: orderId },
+      include: [
+        {
+          model: Dish,
+          as: "dish",
+          include: [
+            {
+              model: RecipeItem,
+              as: "recipe_items",
+              include: [{ model: Ingredient, as: "ingredient" }],
+            },
+          ],
+        },
+      ],
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    if (!detail) throw new AppError("Plato no encontrado", 404);
+    if (!detail.sent_to_kitchen) {
+      throw new AppError("Ese plato todavía no fue a cocina; quítalo del ticket");
+    }
+    if (detail.return_kind) {
+      throw new AppError("Ese plato ya tiene una devolución registrada");
+    }
+
+    const dish = detail.get("dish") as Dish | undefined;
+    const dishName = dish?.name || `Plato ${detail.dish_id}`;
+    const reason =
+      kind === "defecto"
+        ? `Defecto de ${dishName}${note ? `: ${note}` : ""}`
+        : `No le gustó ${dishName}${note ? `: ${note}` : ""}`;
+
+    const required = requiredFromDetails([detail]);
+    for (const [, item] of required) {
+      await InventoryMovement.create(
+        {
+          ingredient_id: item.ingredient.id,
+          type: "merma",
+          quantity: Number(item.needed),
+          reason,
+          order_id: orderId,
+          user_id: userId,
+          merma_review: "pendiente",
+        },
+        { transaction: t }
+      );
+    }
+
+    detail.return_kind = kind;
+    detail.return_note = note;
+    detail.returned_at = new Date();
+    detail.returned_by = userId;
+    detail.charged = kind !== "defecto";
+    await detail.save({ transaction: t });
+    await recalcOrderTotal(order, t);
+  });
+
+  return finishOrder(orderId, ["kitchen", "inventory"]);
 };
 
 export const closeOrderController = async (orderId: number) => {

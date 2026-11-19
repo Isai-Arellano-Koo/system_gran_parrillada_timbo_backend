@@ -6,6 +6,7 @@ import {
   Table,
   User,
 } from "../../models";
+import { Op } from "sequelize";
 import { AppError } from "../../middlewares/errorHandler";
 import { KITCHEN_STATUSES, type KitchenStatus } from "../../types/enums";
 import { notifyWaiterDishReady } from "../notifications/notification.controller";
@@ -15,6 +16,8 @@ const ticketInclude = [
   {
     model: Order,
     as: "order",
+    required: true,
+    where: { status: { [Op.ne]: "cancelado" } },
     include: [
       { model: Table, as: "table" },
       {

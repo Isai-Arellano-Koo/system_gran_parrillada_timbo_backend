@@ -18,6 +18,7 @@ export class Order extends Model<
   declare modality: CreationOptional<AttentionModality>;
   declare table_id: ForeignKey<number | null>;
   declare waiter_id: ForeignKey<number>;
+  declare cancelled_by: CreationOptional<ForeignKey<number> | null>;
   declare delivery_customer_name: CreationOptional<string | null>;
   declare delivery_phone: CreationOptional<string | null>;
   declare delivery_address: CreationOptional<string | null>;
@@ -75,6 +76,10 @@ Order.init(
     waiter_id: {
       type: DataTypes.INTEGER,
       allowNull: false,
+    },
+    cancelled_by: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
     },
     status: {
       type: DataTypes.ENUM("en_edicion", "confirmado", "cerrado", "cancelado"),

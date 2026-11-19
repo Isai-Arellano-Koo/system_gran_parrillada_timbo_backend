@@ -89,6 +89,51 @@ export const connectDatabase = async () => {
     `ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMP WITH TIME ZONE`
   );
   await sequelize.query(
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancelled_by INTEGER`
+  );
+  await sequelize.query(
+    `ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS merma_review VARCHAR(20)`
+  );
+  await sequelize.query(
+    `ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS reviewed_by INTEGER`
+  );
+  await sequelize.query(
+    `ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP WITH TIME ZONE`
+  );
+  await sequelize.query(`
+    UPDATE inventory_movements
+    SET merma_review = 'pendiente'
+    WHERE type = 'merma' AND merma_review IS NULL
+  `);
+  await sequelize.query(
+    `ALTER TABLE order_details ADD COLUMN IF NOT EXISTS charged BOOLEAN NOT NULL DEFAULT true`
+  );
+  await sequelize.query(
+    `ALTER TABLE order_details ADD COLUMN IF NOT EXISTS return_kind VARCHAR(32)`
+  );
+  await sequelize.query(
+    `ALTER TABLE order_details ADD COLUMN IF NOT EXISTS return_note TEXT`
+  );
+  await sequelize.query(
+    `ALTER TABLE order_details ADD COLUMN IF NOT EXISTS returned_at TIMESTAMP WITH TIME ZONE`
+  );
+  await sequelize.query(
+    `ALTER TABLE order_details ADD COLUMN IF NOT EXISTS returned_by INTEGER`
+  );
+  await sequelize.query(`
+    CREATE TABLE IF NOT EXISTS order_cancellations (
+      id SERIAL PRIMARY KEY,
+      order_id INTEGER NOT NULL UNIQUE REFERENCES orders(id) ON DELETE CASCADE,
+      previous_status VARCHAR(32) NOT NULL,
+      previous_kitchen_status VARCHAR(32),
+      stock_action VARCHAR(20) NOT NULL DEFAULT 'none',
+      reason TEXT NOT NULL,
+      cancelled_by INTEGER NOT NULL REFERENCES users(id),
+      created_at TIMESTAMP WITH TIME ZONE,
+      updated_at TIMESTAMP WITH TIME ZONE
+    )
+  `);
+  await sequelize.query(
     `ALTER TABLE orders ALTER COLUMN table_id DROP NOT NULL`
   );
   await sequelize.query(

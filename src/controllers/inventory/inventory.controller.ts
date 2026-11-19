@@ -154,6 +154,55 @@ export const listMovementsController = async (filters: {
   });
 };
 
+export const reviewMermaController = async (
+  movementId: number,
+  action: "recuperar" | "descartar",
+  userId: number
+) => {
+  return sequelize.transaction(async (t) => {
+    const movement = await InventoryMovement.findByPk(movementId, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    if (!movement || movement.type !== "merma") {
+      throw new AppError("Merma no encontrada", 404);
+    }
+    if (movement.merma_review && movement.merma_review !== "pendiente") {
+      throw new AppError("Esa merma ya fue revisada");
+    }
+
+    if (action === "recuperar") {
+      const ingredient = await Ingredient.findByPk(movement.ingredient_id, {
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+      if (!ingredient) throw new AppError("Ingrediente no encontrado", 404);
+      ingredient.stock_current =
+        Number(ingredient.stock_current) + Number(movement.quantity);
+      await ingredient.save({ transaction: t });
+      await InventoryMovement.create(
+        {
+          ingredient_id: movement.ingredient_id,
+          type: "devolucion",
+          quantity: Number(movement.quantity),
+          reason: `Recuperación de merma #${movement.id}`,
+          order_id: movement.order_id,
+          user_id: userId,
+        },
+        { transaction: t }
+      );
+      movement.merma_review = "recuperada";
+    } else {
+      movement.merma_review = "descartada";
+    }
+    movement.reviewed_by = userId;
+    movement.reviewed_at = new Date();
+    await movement.save({ transaction: t });
+    publishLive("inventory");
+    return movement;
+  });
+};
+
 export const rejectDeleteMovementController = async () => {
   throw new AppError(
     "Un movimiento confirmado no se elimina. Registra una entrada o un ajuste para corregir el stock.",

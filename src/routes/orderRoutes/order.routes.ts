@@ -9,6 +9,7 @@ import {
   validateStockHandler,
   confirmOrderHandler,
   cancelOrderHandler,
+  returnOrderDetailHandler,
   closeOrderHandler,
   sendAdditionsHandler,
   setOrderPaidHandler,
@@ -118,6 +119,11 @@ router.post(
   "/:orderId/cancel",
   requireRoles("admin", "mesero", "cajero"),
   cancelOrderHandler
+);
+router.post(
+  "/:orderId/details/:detailId/return",
+  requireRoles("admin", "mesero", "cajero"),
+  returnOrderDetailHandler
 );
 
 export default router;
