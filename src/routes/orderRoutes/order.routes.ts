@@ -14,6 +14,7 @@ import {
   sendAdditionsHandler,
   setOrderPaidHandler,
   listOrdersHandler,
+  listOrdersHistoryHandler,
   listSoldDishesHandler,
   getOrderHandler,
   listTablesHandler,
@@ -54,6 +55,11 @@ router.patch(
 );
 
 router.get("/", requireRoles("mesero", "admin", "cocinero", "cajero"), listOrdersHandler);
+router.get(
+  "/history",
+  requireRoles("admin"),
+  listOrdersHistoryHandler
+);
 router.post(
   "/join-tables",
   requireRoles("mesero", "admin"),

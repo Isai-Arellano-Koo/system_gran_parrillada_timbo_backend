@@ -86,6 +86,9 @@ export const connectDatabase = async () => {
     `ALTER TABLE orders ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMP WITH TIME ZONE`
   );
   await sequelize.query(
+    `ALTER TABLE orders ALTER COLUMN code TYPE VARCHAR(80)`
+  );
+  await sequelize.query(
     `ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMP WITH TIME ZONE`
   );
   await sequelize.query(
@@ -229,6 +232,9 @@ export const connectDatabase = async () => {
   await sequelize.query(
     `ALTER TABLE waiter_notifications ADD COLUMN IF NOT EXISTS dish_label VARCHAR(160)`
   );
+  await sequelize.query(
+    `ALTER TABLE waiter_notifications ALTER COLUMN order_code TYPE VARCHAR(80)`
+  );
   await sequelize.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS waiter_notifications_detail_unique
     ON waiter_notifications (order_detail_id)
@@ -290,4 +296,115 @@ export const connectDatabase = async () => {
     CREATE UNIQUE INDEX IF NOT EXISTS dishes_name_presentation_unique
     ON dishes (name, presentation)
   `);
+
+  await rewriteOrderCodes();
+};
+
+type OrderCodeRow = {
+  id: number;
+  code: string;
+  modality: string;
+  created_at: Date | string;
+  tables_part: string | null;
+};
+
+const limaStampFrom = (value: Date | string) => {
+  const date = value instanceof Date ? value : new Date(value);
+  const [year, month, day] = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Lima",
+  })
+    .format(date)
+    .split("-");
+  return `${day}${month}${year.slice(2)}`;
+};
+
+const prefixForOrder = (row: OrderCodeRow) => {
+  const stamp = limaStampFrom(row.created_at);
+  if (row.modality === "delivery") return `DEL-${stamp}-`;
+  if (row.modality === "para_llevar") return `LLE-${stamp}-`;
+  return `MES-${row.tables_part || "00"}-${stamp}-`;
+};
+
+const rewriteOrderCodes = async () => {
+  const rows = await sequelize.query<OrderCodeRow>(
+    `SELECT
+       o.id,
+       o.code,
+       COALESCE(o.modality, 'mesa') AS modality,
+       o.created_at,
+       COALESCE(
+         (
+           SELECT string_agg(lpad(t.number::text, 2, '0'), '+' ORDER BY t.number)
+           FROM order_tables ot
+           JOIN tables t ON t.id = ot.table_id
+           WHERE ot.order_id = o.id
+         ),
+         (
+           SELECT lpad(t.number::text, 2, '0')
+           FROM tables t
+           WHERE t.id = o.table_id
+         ),
+         '00'
+       ) AS tables_part
+     FROM orders o
+     ORDER BY o.created_at ASC, o.id ASC`,
+    { type: QueryTypes.SELECT }
+  );
+  if (!rows.length) return;
+
+  const grouped = new Map<string, OrderCodeRow[]>();
+  for (const row of rows) {
+    const prefix = prefixForOrder(row);
+    const list = grouped.get(prefix) || [];
+    list.push(row);
+    grouped.set(prefix, list);
+  }
+
+  const mapped = rows.map((row) => {
+    const list = grouped.get(prefixForOrder(row)) || [];
+    const seq = list.findIndex((item) => item.id === row.id) + 1;
+    const next = `${prefixForOrder(row)}${String(seq).padStart(2, "0")}`;
+    return { id: row.id, old: row.code, next };
+  });
+  const changed = mapped.filter((item) => item.old !== item.next);
+  if (!changed.length) return;
+
+  const sqlText = (value: string) => `'${value.replace(/'/g, "''")}'`;
+  const orderValues = mapped
+    .map((item) => `(${Number(item.id)}, ${sqlText(item.next)})`)
+    .join(", ");
+  const changedValues = changed
+    .map(
+      (item) =>
+        `(${Number(item.id)}, ${sqlText(item.old)}, ${sqlText(item.next)})`
+    )
+    .join(", ");
+
+  await sequelize.transaction(async (t) => {
+    await sequelize.query(`UPDATE orders SET code = '__mig' || id::text`, {
+      transaction: t,
+    });
+    await sequelize.query(
+      `UPDATE orders AS o
+       SET code = v.next
+       FROM (VALUES ${orderValues}) AS v(id, next)
+       WHERE o.id = v.id`,
+      { transaction: t }
+    );
+    await sequelize.query(
+      `UPDATE waiter_notifications AS n
+       SET order_code = v.next
+       FROM (VALUES ${orderValues}) AS v(id, next)
+       WHERE n.order_id = v.id`,
+      { transaction: t }
+    );
+    await sequelize.query(
+      `UPDATE inventory_movements AS m
+       SET reason = replace(m.reason, v.old, v.next)
+       FROM (VALUES ${changedValues}) AS v(id, old, next)
+       WHERE m.order_id = v.id AND m.reason IS NOT NULL`,
+      { transaction: t }
+    );
+  });
+  console.log(`Códigos de pedido actualizados: ${changed.length}`);
 };

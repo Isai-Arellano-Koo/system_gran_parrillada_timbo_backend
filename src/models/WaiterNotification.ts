@@ -51,7 +51,7 @@ WaiterNotification.init(
       allowNull: false,
     },
     order_code: {
-      type: DataTypes.STRING(40),
+      type: DataTypes.STRING(80),
       allowNull: false,
     },
     table_label: {

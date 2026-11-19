@@ -14,6 +14,7 @@ import {
   sendAdditionsController,
   setOrderPaidController,
   listOrdersController,
+  listOrdersHistoryController,
   listSoldDishesController,
   getOrderController,
 } from "../../controllers/orders/order.controller";
@@ -59,6 +60,18 @@ export const listOrdersHandler = (req: Request, res: Response) =>
       typeof req.query.modality === "string" ? req.query.modality : undefined,
       req.user?.role
     )
+  );
+
+export const listOrdersHistoryHandler = (req: Request, res: Response) =>
+  handle(res, () =>
+    listOrdersHistoryController({
+      date: typeof req.query.date === "string" ? req.query.date : undefined,
+      from: typeof req.query.from === "string" ? req.query.from : undefined,
+      to: typeof req.query.to === "string" ? req.query.to : undefined,
+      status: typeof req.query.status === "string" ? req.query.status : undefined,
+      modality:
+        typeof req.query.modality === "string" ? req.query.modality : undefined,
+    })
   );
 
 export const listSoldDishesHandler = (_req: Request, res: Response) =>

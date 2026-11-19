@@ -18,7 +18,7 @@ import {
   tableIdsInSameGroup,
   ungroupTablesController,
 } from "./tables.controller";
-import { Op, type Transaction } from "sequelize";
+import { Op, fn, col, where as sqlWhere, type Transaction } from "sequelize";
 import { sequelize } from "../../config/database";
 import { AppError } from "../../middlewares/errorHandler";
 import { publishLive, type LiveScope } from "../../live/hub";
@@ -44,6 +44,37 @@ type OpenOrderInput = {
   delivery_note?: string;
 };
 
+const limaYmd = (date = new Date()) =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "America/Lima" }).format(date);
+
+const limaDateStamp = (date = new Date()) => {
+  const [year, month, day] = limaYmd(date).split("-");
+  return `${day}${month}${year.slice(2)}`;
+};
+
+const parseDay = (value?: string) => {
+  const raw = (value || "").trim();
+  if (!raw) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    throw new AppError("La fecha debe tener el formato AAAA-MM-DD", 400);
+  }
+  const start = new Date(`${raw}T00:00:00-05:00`);
+  if (Number.isNaN(start.getTime())) throw new AppError("Fecha no válida", 400);
+  return raw;
+};
+
+const dayBounds = (from: string, to: string) => {
+  const start = new Date(`${from}T00:00:00-05:00`);
+  const end = new Date(`${to}T23:59:59.999-05:00`);
+  if (start > end) {
+    throw new AppError("La fecha inicial no puede ser mayor que la final", 400);
+  }
+  if (end.getTime() - start.getTime() > 366 * 24 * 60 * 60 * 1000) {
+    throw new AppError("El rango no puede superar un año", 400);
+  }
+  return { start, end };
+};
+
 const nextNumberedCode = async (prefix: string, t: Transaction) => {
   const rows = await Order.findAll({
     where: { code: { [Op.like]: `${prefix}%` } },
@@ -56,23 +87,39 @@ const nextNumberedCode = async (prefix: string, t: Transaction) => {
     if (Number.isFinite(value) && value > max) max = value;
   }
   for (let step = 1; step <= 50; step++) {
-    const code = `${prefix}${max + step}`;
+    const code = `${prefix}${String(max + step).padStart(2, "0")}`;
     const taken = await Order.findOne({ where: { code }, transaction: t });
     if (!taken) return code;
   }
-  return `${prefix}${max + 1}`;
+  return `${prefix}${String(max + 1).padStart(2, "0")}`;
 };
 
-// Ej: MESA 4-1, DEL-1, LLEVAR-1
-const generateTableOrderCode = async (tableNumber: number, t: Transaction) => {
-  return nextNumberedCode(`MESA ${tableNumber}-`, t);
+const tableCodePart = (tableNumbers: number[]) => {
+  const unique = [...new Set(tableNumbers.filter((n) => n > 0))].sort(
+    (a, b) => a - b
+  );
+  if (!unique.length) return "00";
+  return unique.map((n) => String(n).padStart(2, "0")).join("+");
+};
+
+// Ej: MES-04-191126-01, DEL-191126-01, LLE-191126-01
+const generateTableOrderCode = async (
+  tableNumbers: number | number[],
+  t: Transaction
+) => {
+  const list = Array.isArray(tableNumbers) ? tableNumbers : [tableNumbers];
+  return nextNumberedCode(
+    `MES-${tableCodePart(list.map(Number))}-${limaDateStamp()}-`,
+    t
+  );
 };
 
 const generateOffsiteOrderCode = async (
   modality: "delivery" | "para_llevar",
   t: Transaction
 ) => {
-  return nextNumberedCode(modality === "para_llevar" ? "LLEVAR-" : "DEL-", t);
+  const kind = modality === "para_llevar" ? "LLE" : "DEL";
+  return nextNumberedCode(`${kind}-${limaDateStamp()}-`, t);
 };
 
 // Trae el pedido con mesa, mesero, platos y comanda
@@ -465,9 +512,18 @@ export const openOrderController = async (
       }
     }
 
+    const groupedTables = await Table.findAll({
+      where: { id: { [Op.in]: groupIds.length ? groupIds : [tableId] } },
+      attributes: ["number"],
+      transaction: t,
+    });
+
     const order = await Order.create(
       {
-        code: await generateTableOrderCode(table.number, t),
+        code: await generateTableOrderCode(
+          groupedTables.map((row) => row.number),
+          t
+        ),
         modality: "mesa",
         table_id: tableId,
         waiter_id: userId,
@@ -526,9 +582,19 @@ export const joinTablesController = async (
     const memberIds = await tableIdsInSameGroup(fromId, t);
     const host =
       first.number <= second.number ? first : second;
+    const groupedTables = await Table.findAll({
+      where: {
+        id: { [Op.in]: memberIds.length ? memberIds : [fromId, toId] },
+      },
+      attributes: ["number"],
+      transaction: t,
+    });
     const order = await Order.create(
       {
-        code: await generateTableOrderCode(host.number, t),
+        code: await generateTableOrderCode(
+          groupedTables.map((row) => row.number),
+          t
+        ),
         modality: "mesa",
         table_id: host.id,
         waiter_id: userId,
@@ -592,6 +658,109 @@ export const listOrdersController = async (
     ],
     order: [["created_at", "DESC"]],
   });
+};
+
+type OrderHistoryQuery = {
+  date?: string;
+  from?: string;
+  to?: string;
+  status?: string;
+  modality?: string;
+};
+
+const HISTORY_STATUSES = [
+  "en_edicion",
+  "confirmado",
+  "cerrado",
+  "cancelado",
+] as const;
+
+export const listOrdersHistoryController = async (query: OrderHistoryQuery) => {
+  const today = limaYmd();
+  const single = parseDay(query.date);
+  const from = single || parseDay(query.from) || today;
+  const to = single || parseDay(query.to) || today;
+  const { start, end } = dayBounds(from, to);
+
+  const where: Record<string, unknown> = {
+    [Op.and]: [
+      sqlWhere(
+        fn("COALESCE", col("Order.confirmed_at"), col("Order.created_at")),
+        { [Op.between]: [start, end] }
+      ),
+    ],
+  };
+
+  const status = (query.status || "").trim();
+  if (status === "pendientes") {
+    where.status = { [Op.in]: ["en_edicion", "confirmado"] };
+  } else if (status === "completados") {
+    where.status = "cerrado";
+  } else if (
+    HISTORY_STATUSES.includes(status as (typeof HISTORY_STATUSES)[number])
+  ) {
+    where.status = status;
+  }
+
+  const modality = (query.modality || "").trim();
+  if (modality === "offsite") {
+    where.modality = { [Op.in]: ["delivery", "para_llevar"] };
+  } else if (
+    modality === "mesa" ||
+    modality === "delivery" ||
+    modality === "para_llevar"
+  ) {
+    where.modality = modality;
+  }
+
+  const orders = await Order.findAll({
+    where,
+    include: [
+      { model: Table, as: "table" },
+      tablesInclude,
+      { model: User, as: "waiter", attributes: ["id", "name", "role"] },
+      {
+        model: OrderDetail,
+        as: "details",
+        include: [{ model: Dish, as: "dish" }],
+      },
+      { model: KitchenTicket, as: "kitchen_ticket" },
+    ],
+    order: [
+      [
+        fn("COALESCE", col("Order.confirmed_at"), col("Order.created_at")),
+        "DESC",
+      ],
+    ],
+  });
+
+  const by_status = Object.fromEntries(
+    HISTORY_STATUSES.map((key) => [key, { count: 0, total: 0 }])
+  ) as Record<
+    (typeof HISTORY_STATUSES)[number],
+    { count: number; total: number }
+  >;
+
+  for (const order of orders) {
+    const amount = Number(order.total) || 0;
+    const key = order.status as (typeof HISTORY_STATUSES)[number];
+    if (!by_status[key]) continue;
+    by_status[key].count += 1;
+    by_status[key].total += amount;
+  }
+
+  return {
+    from,
+    to,
+    orders,
+    summary: {
+      count: orders.length,
+      sales_total: by_status.confirmado.total + by_status.cerrado.total,
+      pending_total: by_status.en_edicion.total,
+      cancelled_total: by_status.cancelado.total,
+      by_status,
+    },
+  };
 };
 
 type SoldDishRow = {

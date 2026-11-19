@@ -44,7 +44,7 @@ Order.init(
       primaryKey: true,
     },
     code: {
-      type: DataTypes.STRING(40),
+      type: DataTypes.STRING(80),
       allowNull: false,
       unique: true,
     },
