@@ -315,7 +315,8 @@ const requiredFromDetails = (details: OrderDetail[]) => {
   >();
 
   for (const detail of details) {
-    const dish = detail.get("dish") as
+    const dish = (detail.get("dish") ||
+      (detail as OrderDetail & { dish?: Dish }).dish) as
       | (Dish & {
           recipe_items?: (RecipeItem & { ingredient?: Ingredient })[];
         })
@@ -968,6 +969,9 @@ export const validateStockController = async (orderId: number) => {
     unsentOnly: order.status === "confirmado",
   });
   if (details.length === 0) {
+    if (order.status === "confirmado") {
+      return { ok: true, shortages: [] };
+    }
     throw new AppError("El pedido debe contener al menos un plato");
   }
 
@@ -1238,19 +1242,6 @@ export const returnOrderDetailController = async (
 
     const detail = await OrderDetail.findOne({
       where: { id: detailId, order_id: orderId },
-      include: [
-        {
-          model: Dish,
-          as: "dish",
-          include: [
-            {
-              model: RecipeItem,
-              as: "recipe_items",
-              include: [{ model: Ingredient, as: "ingredient" }],
-            },
-          ],
-        },
-      ],
       transaction: t,
       lock: t.LOCK.UPDATE,
     });
@@ -1262,14 +1253,25 @@ export const returnOrderDetailController = async (
       throw new AppError("Ese plato ya tiene una devolución registrada");
     }
 
-    const dish = detail.get("dish") as Dish | undefined;
+    const dish = await Dish.findByPk(detail.dish_id, {
+      include: [
+        {
+          model: RecipeItem,
+          as: "recipe_items",
+          include: [{ model: Ingredient, as: "ingredient" }],
+        },
+      ],
+      transaction: t,
+    });
     const dishName = dish?.name || `Plato ${detail.dish_id}`;
-    const reason =
+    const reason = (
       kind === "defecto"
         ? `Defecto de ${dishName}${note ? `: ${note}` : ""}`
-        : `No le gustó ${dishName}${note ? `: ${note}` : ""}`;
+        : `No le gustó ${dishName}${note ? `: ${note}` : ""}`
+    ).slice(0, 255);
 
-    const required = requiredFromDetails([detail]);
+    const detailWithDish = Object.assign(detail, { dish });
+    const required = requiredFromDetails([detailWithDish]);
     for (const [, item] of required) {
       await InventoryMovement.create(
         {
