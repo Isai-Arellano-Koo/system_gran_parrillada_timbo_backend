@@ -7,7 +7,7 @@ import {
   ForeignKey,
 } from "sequelize";
 import { sequelize } from "../config/database";
-import type { OrderStatus } from "../types/enums";
+import type { AttentionModality, OrderStatus } from "../types/enums";
 
 export class Order extends Model<
   InferAttributes<Order>,
@@ -15,8 +15,14 @@ export class Order extends Model<
 > {
   declare id: CreationOptional<number>;
   declare code: string;
-  declare table_id: ForeignKey<number>;
+  declare modality: CreationOptional<AttentionModality>;
+  declare table_id: ForeignKey<number | null>;
   declare waiter_id: ForeignKey<number>;
+  declare cancelled_by: CreationOptional<ForeignKey<number> | null>;
+  declare delivery_customer_name: CreationOptional<string | null>;
+  declare delivery_phone: CreationOptional<string | null>;
+  declare delivery_address: CreationOptional<string | null>;
+  declare delivery_note: CreationOptional<string | null>;
   declare status: CreationOptional<OrderStatus>;
   declare total: CreationOptional<number>;
   declare cancel_reason: CreationOptional<string | null>;
@@ -38,17 +44,42 @@ Order.init(
       primaryKey: true,
     },
     code: {
-      type: DataTypes.STRING(40),
+      type: DataTypes.STRING(80),
       allowNull: false,
       unique: true,
     },
+    modality: {
+      type: DataTypes.STRING(16),
+      allowNull: false,
+      defaultValue: "mesa",
+    },
     table_id: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
+    },
+    delivery_customer_name: {
+      type: DataTypes.STRING(120),
+      allowNull: true,
+    },
+    delivery_phone: {
+      type: DataTypes.STRING(40),
+      allowNull: true,
+    },
+    delivery_address: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+    },
+    delivery_note: {
+      type: DataTypes.TEXT,
+      allowNull: true,
     },
     waiter_id: {
       type: DataTypes.INTEGER,
       allowNull: false,
+    },
+    cancelled_by: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
     },
     status: {
       type: DataTypes.ENUM("en_edicion", "confirmado", "cerrado", "cancelado"),

@@ -6,15 +6,26 @@ import {
   Table,
   User,
 } from "../../models";
+import { Op } from "sequelize";
 import { AppError } from "../../middlewares/errorHandler";
 import { KITCHEN_STATUSES, type KitchenStatus } from "../../types/enums";
+import { notifyWaiterDishReady } from "../notifications/notification.controller";
+import { publishLive } from "../../live/hub";
 
 const ticketInclude = [
   {
     model: Order,
     as: "order",
+    required: true,
+    where: { status: { [Op.ne]: "cancelado" } },
     include: [
       { model: Table, as: "table" },
+      {
+        model: Table,
+        as: "tables",
+        through: { attributes: [] },
+      },
+      { model: User, as: "waiter", attributes: ["id", "name", "role"] },
       {
         model: OrderDetail,
         as: "details",
@@ -102,14 +113,25 @@ export const updateKitchenStatusController = async (
     where: { order_id: ticket.order_id, sent_to_kitchen: true },
   });
   const rank = (value: KitchenStatus) => KITCHEN_STATUSES.indexOf(value);
+  const newlyReady: number[] = [];
   for (const detail of details) {
     const current = (detail.kitchen_status || "pendiente") as KitchenStatus;
     if (rank(current) < rank(status)) {
+      if (status === "listo" && current !== "listo") {
+        newlyReady.push(detail.id);
+      }
       detail.kitchen_status = status;
       await detail.save();
     }
   }
 
+  if (status === "listo") {
+    for (const detailId of newlyReady) {
+      await notifyWaiterDishReady(detailId);
+    }
+  }
+
+  publishLive("kitchen", "orders", "notifications");
   return loadTicket(ticketId);
 };
 
@@ -127,13 +149,18 @@ export const updateKitchenDishController = async (
     throw new AppError("Plato no encontrado en cocina", 404);
   }
 
+  const previous = (detail.kitchen_status || "pendiente") as KitchenStatus;
   detail.kitchen_status = status;
   await detail.save();
   await syncTicketFromDishes(detail.order_id, userId);
+  if (status === "listo" && previous !== "listo") {
+    await notifyWaiterDishReady(detail.id);
+  }
 
   const ticket = await KitchenTicket.findOne({
     where: { order_id: detail.order_id },
   });
   if (!ticket) throw new AppError("Comanda no encontrada", 404);
+  publishLive("kitchen", "orders", "notifications");
   return loadTicket(ticket.id);
 };

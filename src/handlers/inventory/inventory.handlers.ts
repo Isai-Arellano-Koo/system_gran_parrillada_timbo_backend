@@ -5,6 +5,7 @@ import {
   listMovementsController,
   listLowStockAlertsController,
   rejectDeleteMovementController,
+  reviewMermaController,
 } from "../../controllers/inventory/inventory.controller";
 import { AppError } from "../../middlewares/errorHandler";
 
@@ -51,6 +52,16 @@ export const listMovementsHandler = (req: Request, res: Response) =>
 
 export const rejectDeleteMovementHandler = (_req: Request, res: Response) =>
   handle(res, () => rejectDeleteMovementController());
+
+export const reviewMermaHandler = (req: Request, res: Response) =>
+  handle(res, () => {
+    const action =
+      req.body?.action === "recuperar" ? "recuperar" : req.body?.action === "descartar" ? "descartar" : "";
+    if (!action) {
+      throw new AppError("Indica si recuperas o descartas la merma");
+    }
+    return reviewMermaController(Number(req.params.id), action, req.user!.id);
+  });
 
 export const listLowStockAlertsHandler = (_req: Request, res: Response) =>
   handle(res, () => listLowStockAlertsController());

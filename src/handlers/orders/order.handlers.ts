@@ -1,20 +1,31 @@
 import { Request, Response } from "express";
 import {
   openOrderController,
+  joinTablesController,
+  splitTableController,
   addOrderDetailController,
   removeOrderDetailController,
   updateOrderDetailController,
   validateStockController,
   confirmOrderController,
   cancelOrderController,
+  returnOrderDetailController,
   closeOrderController,
   sendAdditionsController,
   setOrderPaidController,
   listOrdersController,
+  listOrdersHistoryController,
+  listSoldDishesController,
   getOrderController,
+} from "../../controllers/orders/order.controller";
+import {
   listTablesController,
   seedTablesController,
-} from "../../controllers/orders/order.controller";
+  setTableActiveController,
+  groupTablesController,
+  ungroupTablesController,
+  listTableChangesController,
+} from "../../controllers/orders/tables.controller";
 import { AppError } from "../../middlewares/errorHandler";
 
 const handle = async (
@@ -37,14 +48,34 @@ const handle = async (
   }
 };
 
-export const listTablesHandler = (_req: Request, res: Response) =>
-  handle(res, () => listTablesController());
+export const listTablesHandler = (req: Request, res: Response) =>
+  handle(res, () => listTablesController(req.user?.role, req.user?.id));
 
 export const seedTablesHandler = (_req: Request, res: Response) =>
   handle(res, () => seedTablesController(30), 201);
 
-export const listOrdersHandler = (_req: Request, res: Response) =>
-  handle(res, () => listOrdersController());
+export const listOrdersHandler = (req: Request, res: Response) =>
+  handle(res, () =>
+    listOrdersController(
+      typeof req.query.modality === "string" ? req.query.modality : undefined,
+      req.user?.role
+    )
+  );
+
+export const listOrdersHistoryHandler = (req: Request, res: Response) =>
+  handle(res, () =>
+    listOrdersHistoryController({
+      date: typeof req.query.date === "string" ? req.query.date : undefined,
+      from: typeof req.query.from === "string" ? req.query.from : undefined,
+      to: typeof req.query.to === "string" ? req.query.to : undefined,
+      status: typeof req.query.status === "string" ? req.query.status : undefined,
+      modality:
+        typeof req.query.modality === "string" ? req.query.modality : undefined,
+    })
+  );
+
+export const listSoldDishesHandler = (_req: Request, res: Response) =>
+  handle(res, () => listSoldDishesController());
 
 export const getOrderHandler = (req: Request, res: Response) =>
   handle(res, () => getOrderController(Number(req.params.orderId)));
@@ -52,9 +83,60 @@ export const getOrderHandler = (req: Request, res: Response) =>
 export const openOrderHandler = (req: Request, res: Response) =>
   handle(
     res,
-    () => openOrderController(Number(req.body.table_id), req.user!.id),
+    () => openOrderController(req.body || {}, req.user!.id, req.user!.role),
     201
   );
+
+export const joinTablesHandler = (req: Request, res: Response) =>
+  handle(res, () =>
+    joinTablesController(
+      Number(req.body?.from_table_id),
+      Number(req.body?.to_table_id),
+      req.user!.id,
+      req.user!.role
+    )
+  );
+
+export const splitTableHandler = (req: Request, res: Response) =>
+  handle(res, () =>
+    splitTableController(
+      Number(req.body?.table_id),
+      req.user!.id,
+      req.user!.role
+    )
+  );
+
+export const setTableActiveHandler = (req: Request, res: Response) =>
+  handle(res, () =>
+    setTableActiveController(
+      Number(req.params.tableId),
+      req.body?.is_active,
+      String(req.body?.reason || ""),
+      req.user!.id,
+      req.user!.role
+    )
+  );
+
+export const groupTablesHandler = (req: Request, res: Response) =>
+  handle(res, () =>
+    groupTablesController(
+      Array.isArray(req.body?.table_ids) ? req.body.table_ids : [],
+      req.user!.id,
+      req.user!.role
+    )
+  );
+
+export const ungroupTablesHandler = (req: Request, res: Response) =>
+  handle(res, () =>
+    ungroupTablesController(
+      Number(req.params.groupId),
+      req.user!.id,
+      req.user!.role
+    )
+  );
+
+export const listTableChangesHandler = (req: Request, res: Response) =>
+  handle(res, () => listTableChangesController(req.user!.role));
 
 export const addOrderDetailHandler = (req: Request, res: Response) =>
   handle(
@@ -102,6 +184,19 @@ export const cancelOrderHandler = (req: Request, res: Response) =>
     cancelOrderController(
       Number(req.params.orderId),
       req.body.reason,
+      req.user!.id
+    )
+  );
+
+export const returnOrderDetailHandler = (req: Request, res: Response) =>
+  handle(res, () =>
+    returnOrderDetailController(
+      Number(req.params.orderId),
+      Number(req.params.detailId),
+      {
+        kind: req.body?.kind,
+        note: req.body?.note,
+      },
       req.user!.id
     )
   );

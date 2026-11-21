@@ -21,6 +21,12 @@ export const KITCHEN_STATUSES = [
 ] as const;
 export type KitchenStatus = (typeof KITCHEN_STATUSES)[number];
 
+export const ATTENTION_MODALITIES = ["mesa", "delivery", "para_llevar"] as const;
+export type AttentionModality = (typeof ATTENTION_MODALITIES)[number];
+
+export const isOffsiteModality = (modality?: string) =>
+  modality === "delivery" || modality === "para_llevar";
+
 export const INVENTORY_MOVEMENT_TYPES = [
   "entrada",
   "salida_venta",

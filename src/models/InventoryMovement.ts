@@ -20,6 +20,9 @@ export class InventoryMovement extends Model<
   declare reason: CreationOptional<string | null>;
   declare order_id: CreationOptional<number | null>;
   declare user_id: ForeignKey<number>;
+  declare merma_review: CreationOptional<string | null>;
+  declare reviewed_by: CreationOptional<ForeignKey<number> | null>;
+  declare reviewed_at: CreationOptional<Date | null>;
   declare created_at: CreationOptional<Date>;
   declare updated_at: CreationOptional<Date>;
 }
@@ -60,6 +63,18 @@ InventoryMovement.init(
     user_id: {
       type: DataTypes.INTEGER,
       allowNull: false,
+    },
+    merma_review: {
+      type: DataTypes.STRING(20),
+      allowNull: true,
+    },
+    reviewed_by: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    reviewed_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
     },
     created_at: DataTypes.DATE,
     updated_at: DataTypes.DATE,

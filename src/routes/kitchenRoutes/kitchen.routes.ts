@@ -18,7 +18,7 @@ router.get(
 );
 router.patch(
   "/details/:detailId/status",
-  requireRoles("cocinero", "admin", "mesero"),
+  requireRoles("cocinero", "admin"),
   updateKitchenDishHandler
 );
 router.patch(
