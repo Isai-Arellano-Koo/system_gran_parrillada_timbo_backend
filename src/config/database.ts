@@ -62,6 +62,33 @@ export const connectDatabase = async () => {
   await ensureEnumValue("users", "role", "cajero");
   await ensureEnumValue("orders", "status", "cerrado");
   await sequelize.query(
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR(60)`
+  );
+  await sequelize.query(`
+    UPDATE users
+    SET username = lower(split_part(email, '@', 1))
+    WHERE username IS NULL AND email IS NOT NULL AND email <> ''
+  `);
+  await sequelize.query(`
+    UPDATE users AS u
+    SET username = u.username || u.id::text
+    WHERE u.username IS NOT NULL
+      AND EXISTS (
+        SELECT 1
+        FROM users AS other
+        WHERE other.username = u.username
+          AND other.id < u.id
+      )
+  `);
+  await sequelize.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS users_username_unique
+    ON users (username)
+    WHERE username IS NOT NULL
+  `);
+  await sequelize.query(
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT true`
+  );
+  await sequelize.query(
     `ALTER TABLE orders ADD COLUMN IF NOT EXISTS closed_at TIMESTAMP WITH TIME ZONE`
   );
   await sequelize.query(
@@ -249,9 +276,6 @@ export const connectDatabase = async () => {
       AND o.status IN ('confirmado', 'cerrado', 'cancelado')
   `);
 
-  await sequelize.query(
-    `ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT true`
-  );
   await sequelize.query(
     `ALTER TABLE email_verifications ADD COLUMN IF NOT EXISTS purpose VARCHAR(32) NOT NULL DEFAULT 'confirm-email'`
   );
