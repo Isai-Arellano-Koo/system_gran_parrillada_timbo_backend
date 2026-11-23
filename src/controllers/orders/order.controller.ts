@@ -15,6 +15,7 @@ import {
 } from "../../models";
 import {
   mergeIntoGroup,
+  splitWaiterJoinedTables,
   tableIdsInSameGroup,
   ungroupTablesController,
 } from "./tables.controller";
@@ -1249,6 +1250,18 @@ export const cancelOrderController = async (
       },
       { transaction: t }
     );
+
+    if (!isOffsiteModality(order.modality)) {
+      const links = await OrderTable.findAll({
+        where: { order_id: orderId },
+        transaction: t,
+      });
+      await splitWaiterJoinedTables(
+        [...links.map((row) => row.table_id), Number(order.table_id || 0)],
+        userId,
+        t
+      );
+    }
   });
 
   return finishOrder(orderId, ["kitchen", "inventory", "tables"]);
@@ -1335,31 +1348,49 @@ export const returnOrderDetailController = async (
   return finishOrder(orderId, ["kitchen", "inventory"]);
 };
 
-export const closeOrderController = async (orderId: number) => {
-  const order = await Order.findByPk(orderId);
-  if (!order) throw new AppError("Pedido no encontrado", 404);
-  if (order.status !== "confirmado") {
-    throw new AppError(
-      isOffsiteModality(order.modality)
-        ? "Solo se cierra un pedido confirmado"
-        : "Solo se libera una mesa con pedido confirmado"
-    );
-  }
-  const pending = await OrderDetail.count({
-    where: { order_id: orderId, sent_to_kitchen: false },
+export const closeOrderController = async (orderId: number, userId: number) => {
+  await sequelize.transaction(async (t) => {
+    const order = await Order.findByPk(orderId, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    if (!order) throw new AppError("Pedido no encontrado", 404);
+    if (order.status !== "confirmado") {
+      throw new AppError(
+        isOffsiteModality(order.modality)
+          ? "Solo se cierra un pedido confirmado"
+          : "Solo se libera una mesa con pedido confirmado"
+      );
+    }
+    const pending = await OrderDetail.count({
+      where: { order_id: orderId, sent_to_kitchen: false },
+      transaction: t,
+    });
+    if (pending > 0) {
+      throw new AppError("Hay platos nuevos sin enviar a cocina");
+    }
+    if (dueAmount(order) > 0.009) {
+      throw new AppError(
+        isOffsiteModality(order.modality)
+          ? "El pedido tiene un saldo pendiente"
+          : "La mesa tiene un saldo pendiente"
+      );
+    }
+    order.status = "cerrado";
+    order.closed_at = new Date();
+    await order.save({ transaction: t });
+
+    if (!isOffsiteModality(order.modality)) {
+      const links = await OrderTable.findAll({
+        where: { order_id: orderId },
+        transaction: t,
+      });
+      await splitWaiterJoinedTables(
+        [...links.map((row) => row.table_id), Number(order.table_id || 0)],
+        userId,
+        t
+      );
+    }
   });
-  if (pending > 0) {
-    throw new AppError("Hay platos nuevos sin enviar a cocina");
-  }
-  if (dueAmount(order) > 0.009) {
-    throw new AppError(
-      isOffsiteModality(order.modality)
-        ? "El pedido tiene un saldo pendiente"
-        : "La mesa tiene un saldo pendiente"
-    );
-  }
-  order.status = "cerrado";
-  order.closed_at = new Date();
-  await order.save();
   return finishOrder(orderId, ["tables", "kitchen"]);
 };

@@ -169,7 +169,9 @@ export const confirmOrderHandler = (req: Request, res: Response) =>
   handle(res, () => confirmOrderController(Number(req.params.orderId)));
 
 export const closeOrderHandler = (req: Request, res: Response) =>
-  handle(res, () => closeOrderController(Number(req.params.orderId)));
+  handle(res, () =>
+    closeOrderController(Number(req.params.orderId), req.user!.id)
+  );
 
 export const sendAdditionsHandler = (req: Request, res: Response) =>
   handle(res, () => sendAdditionsController(Number(req.params.orderId)));

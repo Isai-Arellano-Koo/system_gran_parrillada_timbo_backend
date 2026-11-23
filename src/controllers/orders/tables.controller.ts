@@ -391,6 +391,51 @@ export const groupTablesController = async (
   return serializeTables(role === "admin" ? "admin" : undefined, userId);
 };
 
+export const splitWaiterJoinedTables = async (
+  tableIds: number[],
+  actorUserId: number,
+  t: Transaction
+) => {
+  const unique = [...new Set(tableIds.map(Number).filter((id) => id > 0))];
+  if (!unique.length) return;
+  const member = await TableGroupMember.findOne({
+    where: { table_id: { [Op.in]: unique } },
+    transaction: t,
+  });
+  if (!member) return;
+  const group = await TableGroup.findByPk(member.group_id, { transaction: t });
+  if (!group) return;
+  const creator = await User.findByPk(group.created_by, { transaction: t });
+  if (!creator || creator.role !== "mesero") return;
+
+  const members = await TableGroupMember.findAll({
+    where: { group_id: group.id },
+    transaction: t,
+  });
+  const ids = members.map((row) => row.table_id);
+  const numbered = await Table.findAll({
+    where: { id: { [Op.in]: ids } },
+    transaction: t,
+  });
+  await TableGroupMember.destroy({
+    where: { group_id: group.id },
+    transaction: t,
+  });
+  await TableGroup.destroy({ where: { id: group.id }, transaction: t });
+  await TableGroupChange.create(
+    {
+      group_id: group.id,
+      action: "desagrupar",
+      table_ids: numbered
+        .map((table) => table.number)
+        .sort((a, b) => a - b)
+        .join(","),
+      changed_by: actorUserId,
+    },
+    { transaction: t }
+  );
+};
+
 export const ungroupTablesController = async (
   groupId: number,
   userId: number,
