@@ -12,6 +12,7 @@ import { Order } from "./Order";
 import { OrderTable } from "./OrderTable";
 import { OrderDetail } from "./OrderDetail";
 import { KitchenTicket } from "./KitchenTicket";
+import { KitchenTicketStatusChange } from "./KitchenTicketStatusChange";
 import { InventoryMovement } from "./InventoryMovement";
 import { EmailVerification } from "./EmailVerification";
 import { LoginAttempt } from "./LoginAttempt";
@@ -143,6 +144,24 @@ KitchenTicket.belongsTo(User, {
   as: "status_changed_by_user",
 });
 
+KitchenTicket.hasMany(KitchenTicketStatusChange, {
+  foreignKey: "kitchen_ticket_id",
+  as: "history",
+  onDelete: "CASCADE",
+});
+KitchenTicketStatusChange.belongsTo(KitchenTicket, {
+  foreignKey: "kitchen_ticket_id",
+  as: "ticket",
+});
+KitchenTicketStatusChange.belongsTo(User, {
+  foreignKey: "changed_by",
+  as: "changed_by_user",
+});
+User.hasMany(KitchenTicketStatusChange, {
+  foreignKey: "changed_by",
+  as: "kitchen_status_changes_made",
+});
+
 Ingredient.hasMany(InventoryMovement, {
   foreignKey: "ingredient_id",
   as: "movements",
@@ -233,6 +252,7 @@ export {
   OrderTable,
   OrderDetail,
   KitchenTicket,
+  KitchenTicketStatusChange,
   InventoryMovement,
   EmailVerification,
   LoginAttempt,

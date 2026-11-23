@@ -268,6 +268,17 @@ export const connectDatabase = async () => {
     WHERE order_detail_id IS NOT NULL
   `);
   await sequelize.query(`
+    CREATE TABLE IF NOT EXISTS kitchen_ticket_status_changes (
+      id SERIAL PRIMARY KEY,
+      kitchen_ticket_id INTEGER NOT NULL REFERENCES kitchen_tickets(id) ON DELETE CASCADE,
+      previous_status VARCHAR(32) NOT NULL,
+      new_status VARCHAR(32) NOT NULL,
+      changed_by INTEGER NOT NULL REFERENCES users(id),
+      created_at TIMESTAMP WITH TIME ZONE,
+      updated_at TIMESTAMP WITH TIME ZONE
+    )
+  `);
+  await sequelize.query(`
     UPDATE order_details d
     SET sent_to_kitchen = true
     FROM orders o
@@ -303,6 +314,14 @@ export const connectDatabase = async () => {
     `ALTER TABLE dishes DROP CONSTRAINT IF EXISTS dishes_name_key`
   );
   await sequelize.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS dishes_name_presentation_unique
+    ON dishes (name, presentation)
+  `);
+
+  const { relinkCartaCatalog } = await import("../helpers/relinkCartaCatalog");
+  await relinkCartaCatalog();
+
+  await sequelize.query(`
     DO $$ BEGIN
       IF NOT EXISTS (
         SELECT 1 FROM dishes WHERE category_id IS NULL
@@ -315,10 +334,6 @@ export const connectDatabase = async () => {
       WHEN duplicate_object THEN NULL;
       WHEN undefined_table THEN NULL;
     END $$
-  `);
-  await sequelize.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS dishes_name_presentation_unique
-    ON dishes (name, presentation)
   `);
 
   await rewriteOrderCodes();

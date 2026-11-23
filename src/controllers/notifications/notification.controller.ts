@@ -20,6 +20,7 @@ export type WaiterNotificationRow = {
   order_code: string;
   table_label: string;
   dish_label: string;
+  modality: "mesa" | "delivery" | "para_llevar" | null;
   generated_at: string;
   attended_at: string | null;
 };
@@ -59,7 +60,28 @@ const dishLabelOf = (dish?: Dish | null, observation?: string | null) => {
   return note ? `${base} (${note})` : base;
 };
 
-const serialize = (row: WaiterNotification): WaiterNotificationRow => ({
+const orderInclude = {
+  model: Order,
+  as: "order",
+  attributes: ["id", "modality"],
+} as const;
+
+const modalityOf = (
+  row: WaiterNotification,
+  fallback?: string | null
+): WaiterNotificationRow["modality"] => {
+  const order = row.get("order") as Order | undefined;
+  const value = order?.modality || fallback || "";
+  if (value === "delivery" || value === "para_llevar" || value === "mesa") {
+    return value;
+  }
+  return null;
+};
+
+const serialize = (
+  row: WaiterNotification,
+  fallbackModality?: string | null
+): WaiterNotificationRow => ({
   id: Number(row.id),
   order_id: Number(row.order_id),
   kitchen_ticket_id: Number(row.kitchen_ticket_id),
@@ -68,6 +90,7 @@ const serialize = (row: WaiterNotification): WaiterNotificationRow => ({
   order_code: row.order_code,
   table_label: row.table_label,
   dish_label: row.dish_label || "Plato",
+  modality: modalityOf(row, fallbackModality),
   generated_at: row.created_at
     ? new Date(row.created_at).toISOString()
     : new Date(row.ticket_ready_at).toISOString(),
@@ -111,7 +134,7 @@ export const notifyWaiterDishReady = async (
       attended_at: null,
     });
     publishLive("notifications");
-    return serialize(created);
+    return serialize(created, order.modality);
   } catch (error) {
     if (error instanceof UniqueConstraintError) return null;
     throw error;
@@ -127,6 +150,7 @@ export const listWaiterNotificationsController = async (
   }
   const rows = await WaiterNotification.findAll({
     where: { waiter_id: userId },
+    include: [orderInclude],
     order: [["created_at", "DESC"]],
     limit: 80,
   });
@@ -147,7 +171,9 @@ export const attendWaiterNotificationController = async (
   if (role !== "mesero" && role !== "admin") {
     throw new AppError("Solo el mesero atiende estas notificaciones", 403);
   }
-  const row = await WaiterNotification.findByPk(notificationId);
+  const row = await WaiterNotification.findByPk(notificationId, {
+    include: [orderInclude],
+  });
   if (!row) throw new AppError("Notificación no encontrada", 404);
   if (row.waiter_id !== userId) {
     throw new AppError("Esa notificación no te corresponde", 403);

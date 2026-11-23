@@ -10,8 +10,8 @@
     "db:sync": "tsx src/scripts/syncDb.ts",
     "db:seed": "tsx src/scripts/seed.ts",
     "db:reset": "tsx src/scripts/seed.ts --reset",
-    "test": "vitest run",
-    "test:api": "vitest run"
+    "test": "vitest run --fileParallelism=false --hookTimeout=120000",
+    "test:api": "vitest run --fileParallelism=false --hookTimeout=120000"
   },
   "license": "ISC",
   "dependencies": {

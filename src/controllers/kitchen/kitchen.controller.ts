@@ -1,6 +1,7 @@
 import {
   Dish,
   KitchenTicket,
+  KitchenTicketStatusChange,
   Order,
   OrderDetail,
   Table,
@@ -40,7 +41,39 @@ const ticketInclude = [
     as: "status_changed_by_user",
     attributes: ["id", "name"],
   },
+  {
+    model: KitchenTicketStatusChange,
+    as: "history",
+    separate: true,
+    order: [["created_at", "ASC"]],
+  },
 ];
+
+const nextKitchenStatus = (current: KitchenStatus) => {
+  const index = KITCHEN_STATUSES.indexOf(current);
+  return index >= 0 && index < KITCHEN_STATUSES.length - 1
+    ? KITCHEN_STATUSES[index + 1]
+    : null;
+};
+
+const recordTicketStatusChange = async (
+  ticket: KitchenTicket,
+  previous: KitchenStatus,
+  next: KitchenStatus,
+  userId: number
+) => {
+  if (previous === next) return;
+  ticket.status = next;
+  ticket.status_changed_by = userId;
+  ticket.status_changed_at = new Date();
+  await ticket.save();
+  await KitchenTicketStatusChange.create({
+    kitchen_ticket_id: ticket.id,
+    previous_status: previous,
+    new_status: next,
+    changed_by: userId,
+  });
+};
 
 const loadTicket = async (ticketId: number) => {
   const ticket = await KitchenTicket.findByPk(ticketId, {
@@ -79,10 +112,7 @@ const syncTicketFromDishes = async (orderId: number, userId: number) => {
     details.map((detail) => (detail.kitchen_status || "pendiente") as KitchenStatus)
   );
   if (ticket.status === next) return;
-  ticket.status = next;
-  ticket.status_changed_by = userId;
-  ticket.status_changed_at = new Date();
-  await ticket.save();
+  await recordTicketStatusChange(ticket, ticket.status, next, userId);
 };
 
 export const listKitchenTicketsController = async () => {
@@ -104,10 +134,14 @@ export const updateKitchenStatusController = async (
   const ticket = await KitchenTicket.findByPk(ticketId);
   if (!ticket) throw new AppError("Comanda no encontrada", 404);
 
-  ticket.status = status;
-  ticket.status_changed_by = userId;
-  ticket.status_changed_at = new Date();
-  await ticket.save();
+  if (ticket.status !== status) {
+    if (nextKitchenStatus(ticket.status) !== status) {
+      throw new AppError(
+        "No se puede saltar ni retroceder el flujo de la comanda"
+      );
+    }
+    await recordTicketStatusChange(ticket, ticket.status, status, userId);
+  }
 
   const details = await OrderDetail.findAll({
     where: { order_id: ticket.order_id, sent_to_kitchen: true },

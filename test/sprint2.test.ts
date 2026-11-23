@@ -131,7 +131,7 @@ beforeAll(async () => {
     mesero: await loginAs("mesero", "mesero123"),
     cocinero: await loginAs("cocinero", "cocinero123"),
   };
-}, 60000);
+}, 120000);
 
 afterAll(async () => {
   if (server) await new Promise<void>((resolve) => server.close(() => resolve()));

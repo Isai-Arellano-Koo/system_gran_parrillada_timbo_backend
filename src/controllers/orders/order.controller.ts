@@ -58,8 +58,15 @@ const parseDay = (value?: string) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
     throw new AppError("La fecha debe tener el formato AAAA-MM-DD", 400);
   }
-  const start = new Date(`${raw}T00:00:00-05:00`);
-  if (Number.isNaN(start.getTime())) throw new AppError("Fecha no válida", 400);
+  const [year, month, day] = raw.split("-").map(Number);
+  const probe = new Date(Date.UTC(year, month - 1, day));
+  if (
+    probe.getUTCFullYear() !== year ||
+    probe.getUTCMonth() !== month - 1 ||
+    probe.getUTCDate() !== day
+  ) {
+    throw new AppError("Fecha no válida", 400);
+  }
   return raw;
 };
 
@@ -365,6 +372,32 @@ const applyCancelStock = async (
   const { kitchenStatus, orderId, userId, reason, t } = options;
   if (!kitchenStatus || kitchenStatus === "entregado") return "none";
 
+  if (kitchenStatus === "pendiente") {
+    for (const [, item] of required) {
+      if (item.needed <= 0) continue;
+      const ingredient = await Ingredient.findByPk(item.ingredient.id, {
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+      if (!ingredient) continue;
+      ingredient.stock_current =
+        Number(ingredient.stock_current) + Number(item.needed);
+      await ingredient.save({ transaction: t });
+      await InventoryMovement.create(
+        {
+          ingredient_id: ingredient.id,
+          type: "devolucion",
+          quantity: Number(item.needed),
+          reason: `Devolución por cancelación: ${reason}`,
+          order_id: orderId,
+          user_id: userId,
+        },
+        { transaction: t }
+      );
+    }
+    return "devolucion";
+  }
+
   for (const [, item] of required) {
     if (item.needed <= 0) continue;
     await InventoryMovement.create(
@@ -489,8 +522,11 @@ export const openOrderController = async (
     return finishOrder(orderId);
   }
 
-  if (role !== "admin" && role !== "mesero") {
-    throw new AppError("Solo el mesero o el administrador abre un pedido de mesa", 403);
+  if (role !== "admin" && role !== "mesero" && role !== "cajero") {
+    throw new AppError(
+      "Solo el mesero, el cajero o el administrador abre un pedido de mesa",
+      403
+    );
   }
 
   const tableId = Number(data.table_id);

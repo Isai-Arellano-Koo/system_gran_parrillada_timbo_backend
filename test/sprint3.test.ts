@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 dotenv.config({ quiet: true });
 dotenv.config({ path: ".env.test", quiet: true });
 
-const TEST_PORT = Number(process.env.TEST_PORT || 3099);
+const TEST_PORT = Number(process.env.TEST_PORT_S3 || process.env.TEST_PORT || 3101);
 const BASE_URL = `http://localhost:${TEST_PORT}`;
 
 type ApiResult<T = any> = { status: number; data: T };
@@ -87,7 +87,13 @@ const prepareSchemaAndSeed = async () => {
   const { hashPassword } = await import("../src/helpers/password");
 
   await sequelize.authenticate();
-  await sequelize.sync({ force: true });
+  await sequelize.query("SET lock_timeout = '8s'");
+  await sequelize.query("SET statement_timeout = '60s'");
+  await sequelize.query("DROP SCHEMA IF EXISTS public CASCADE");
+  await sequelize.query("CREATE SCHEMA public");
+  await sequelize.query("GRANT ALL ON SCHEMA public TO CURRENT_USER");
+  await sequelize.query("GRANT ALL ON SCHEMA public TO public");
+  await sequelize.sync();
 
   const users = [
     { name: "Administrador", username: "admin", email: "admin@timbo.com", password: "admin123", role: "admin" as const },
@@ -144,7 +150,7 @@ beforeAll(async () => {
     cocinero: await idOf("cocinero"),
     cajero: await idOf("cajero"),
   };
-}, 60000);
+}, 120000);
 
 afterAll(async () => {
   if (server) await new Promise<void>((resolve) => server.close(() => resolve()));
