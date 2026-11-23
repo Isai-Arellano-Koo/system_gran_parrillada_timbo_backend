@@ -45,7 +45,7 @@ const ticketInclude = [
     model: KitchenTicketStatusChange,
     as: "history",
     separate: true,
-    order: [["created_at", "ASC"]],
+    order: [["created_at", "ASC"] as [string, string]],
   },
 ];
 

@@ -154,8 +154,12 @@ export const listWaiterNotificationsController = async (
     order: [["created_at", "DESC"]],
     limit: 80,
   });
-  const pending = rows.filter((row) => !row.attended_at).map(serialize);
-  const history = rows.filter((row) => row.attended_at).map(serialize);
+  const pending = rows
+    .filter((row) => !row.attended_at)
+    .map((row) => serialize(row));
+  const history = rows
+    .filter((row) => row.attended_at)
+    .map((row) => serialize(row));
   return {
     pending,
     history,

@@ -318,7 +318,7 @@ export const connectDatabase = async () => {
     ON dishes (name, presentation)
   `);
 
-  const { relinkCartaCatalog } = await import("../helpers/relinkCartaCatalog");
+  const { relinkCartaCatalog } = await import("../helpers/relinkCartaCatalog.js");
   await relinkCartaCatalog();
 
   await sequelize.query(`
