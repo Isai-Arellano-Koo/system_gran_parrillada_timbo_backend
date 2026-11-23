@@ -62,9 +62,9 @@ const dishLabelOf = (dish?: Dish | null, observation?: string | null) => {
 
 const orderInclude = {
   model: Order,
-  as: "order",
+  as: "order" as const,
   attributes: ["id", "modality"],
-} as const;
+};
 
 const modalityOf = (
   row: WaiterNotification,
